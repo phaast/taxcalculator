@@ -1,8 +1,5 @@
 package com.bartoszwalter.students.taxes;
 
-/**
- * Strategy implementation for Civil Contracts (Umowa Zlecenie / Contract of Mandate).
- */
 public class CivilContractTaxStrategy extends AbstractTaxStrategy {
 
     @Override

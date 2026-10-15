@@ -3,10 +3,6 @@ package com.bartoszwalter.students.taxes;
 import java.util.EnumMap;
 import java.util.Map;
 
-/**
- * Service orchestrating tax calculations using registered strategies.
- * Completely decoupled from console I/O and user interface.
- */
 public class TaxCalculatorService {
 
     private final Map<ContractType, TaxStrategy> strategies = new EnumMap<>(ContractType.class);

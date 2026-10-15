@@ -1,8 +1,5 @@
 package com.bartoszwalter.students.taxes;
 
-/**
- * Represents the type of employment or civil contract used for tax calculation.
- */
 public enum ContractType {
     EMPLOYMENT('E', "EMPLOYMENT"),
     CIVIL('C', "CIVIL");

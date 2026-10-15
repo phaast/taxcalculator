@@ -17,6 +17,8 @@ The original `TaxCalculator.java` implementation suffered from severe code smell
 6. **Magic Numbers**: Unexplained numeric literals (`9.76`, `1.5`, `2.45`, `9.0`, `7.75`, `18.0`, `111.25`, `46.33`, `20.0`) scattered throughout the code.
 7. **Poor & Cryptic Naming**: Obscure identifiers (`isr`, `br`, `df00`, `df`, `soc_security`, `soc_health1`, `soc_health2`, `taxedIncome0`, `advanceTaxPaid0`, `d_income`).
 8. **Tightly Coupled I/O and Business Logic**: Calculation code was interwoven with `System.in` and `System.out`, making pure unit testing impossible without standard stream redirection.
+9. **Dead Code & Deprecated Shims**: Preserving unused legacy static fields and methods clutters the codebase with dead code.
+10. **Redundant Comments**: Relying on comments rather than expressive code contradicts Clean Code.
 
 ---
 
@@ -175,7 +177,6 @@ advanceTax = (income * 18) / 100;
 
 #### New Modified Code (After)
 ```java
-// TaxRates.java
 public final class TaxRates {
     private TaxRates() {}
 
@@ -218,11 +219,11 @@ DecimalFormat df00 = new DecimalFormat("#.00");
 DecimalFormat df = new DecimalFormat("#");
 
 double d_income = calculateIncome(income);
-calculateOtherTaxes(income); // mutates soc_health1 and soc_health2
+calculateOtherTaxes(income);
 double taxedIncome = income - taxDeductibleExpenses;
 double taxedIncome0 = Double.parseDouble(df.format(taxedIncome));
 double taxPaid = advanceTax - taxFreeIncome;
-calculateAdvanceTax(); // mutates advanceTaxPaid
+calculateAdvanceTax();
 advanceTaxPaid0 = Double.parseDouble(df.format(advanceTaxPaid));
 ```
 
@@ -300,7 +301,6 @@ public class TaxCalculationResult {
     // Fully initialized via constructor; all fields final with pure getters
 }
 ```
-*Note: For complete backwards compatibility with legacy consumers, `TaxCalculator` retains the static fields marked `@Deprecated` and populates them upon calculation.*
 
 #### Clean Code Principle & Rationale
 - **Clean Code Ch. 6 (Objects and Data Structures)**: Data structures should hide their implementation and protect invariants through immutability.
@@ -308,7 +308,78 @@ public class TaxCalculationResult {
 
 ---
 
-### Decision 5: Replacing Primitive Contract Codes with `ContractType` Enum
+### Decision 5: Total Elimination of Dead Code & Deprecated Shims
+
+#### Context & Problem
+Initially, legacy static fields and methods were kept as `@Deprecated` backwards-compatibility shims. However, in clean codebases, dead code and unused backward-compatibility clutter should not be retained when refactoring internal designs. Git version control preserves history; code itself must remain clean, focused, and free of obsolete artifacts.
+
+#### Previous Code (Before)
+```java
+@Deprecated public static double income = 0;
+@Deprecated public static char contractType = ' ';
+@Deprecated public static double soc_security = 0;
+@Deprecated public static double soc_health_security = 0;
+@Deprecated public static double soc_sick_security = 0;
+@Deprecated public static double taxDeductibleExpenses = 111.25;
+@Deprecated public static double soc_health1 = 0;
+@Deprecated public static double soc_health2 = 0;
+@Deprecated public static double advanceTax = 0;
+@Deprecated public static double taxFreeIncome = 46.33;
+@Deprecated public static double advanceTaxPaid = 0;
+@Deprecated public static double advanceTaxPaid0 = 0;
+
+@Deprecated public static void calculateAdvanceTax() { ... }
+@Deprecated public static void calculateTax(double taxedIncome) { ... }
+@Deprecated public static double calculateIncome(double grossIncome) { ... }
+@Deprecated public static void calculateOtherTaxes(double basis) { ... }
+```
+
+#### New Modified Code (After)
+All 12 deprecated static fields, the `populateLegacyFields` helper, and all 4 legacy mutation methods were completely deleted from `TaxCalculator.java`.
+
+#### Clean Code Principle & Rationale
+- **Clean Code Ch. 17 (G9: Dead Code)**: Dead code is code that is not executed or no longer needed. It creates unnecessary noise, confuses maintainers, and rots over time. Ruthlessly eliminate dead code.
+
+---
+
+### Decision 6: Code as Documentation — Complete Removal of Comments
+
+#### Context & Problem
+Comments frequently restate what clean code already expresses, or become stale and misleading when logic changes. In accordance with Clean Code principles, code should be so clean, intention-revealing, and expressive that comments become completely unnecessary.
+
+#### Previous Code (Before)
+```java
+// Social Security (ZUS) contribution rates
+public static final double PENSION_CONTRIBUTION_RATE = 9.76 / 100.0; // 9.76%
+
+/**
+ * Strategy interface defining tax calculation for a specific contract type.
+ */
+public interface TaxStrategy { ... }
+
+// 1. Social security contributions
+double pensionContribution = grossIncome * TaxRates.PENSION_CONTRIBUTION_RATE;
+```
+
+#### New Modified Code (After)
+All comments (Javadoc, inline notes, section dividers) were completely removed across all classes. The code uses intention-revealing identifiers and single-responsibility classes:
+```java
+public final class TaxRates {
+    private TaxRates() {}
+
+    public static final double PENSION_CONTRIBUTION_RATE = 9.76 / 100.0;
+    public static final double DISABILITY_CONTRIBUTION_RATE = 1.50 / 100.0;
+    public static final double SICKNESS_CONTRIBUTION_RATE = 2.45 / 100.0;
+...
+```
+
+#### Clean Code Principle & Rationale
+- **Clean Code Ch. 4 (Comments)**: "Don't comment bad code — rewrite it." (Brian W. Kernighan and P. J. Plaugher).
+- A comment is often a failure to express the intent through clean code. If class, method, and variable names are chosen properly, comments are redundant clutter.
+
+---
+
+### Decision 7: Replacing Primitive Contract Codes with `ContractType` Enum
 
 #### Context & Problem
 Contract types were represented as primitive character literals (`'E'`, `'C'`). If the user entered an invalid character, the program fell into an `else` branch, or error handling was fragile.
@@ -337,6 +408,14 @@ public enum ContractType {
         this.description = description;
     }
 
+    public char getCode() {
+        return code;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
     public static ContractType fromCode(char code) {
         char upperCode = Character.toUpperCase(code);
         for (ContractType type : values()) {
@@ -354,7 +433,7 @@ public enum ContractType {
 
 ---
 
-### Decision 6: Eliminating Duplication & Applying the Strategy Pattern (DRY & OCP)
+### Decision 8: Eliminating Duplication & Applying the Strategy Pattern (DRY & OCP)
 
 #### Context & Problem
 `contractType == 'E'` and `contractType == 'C'` branches duplicated 90% of their logic. Adding a new contract type (e.g. B2B, task contract) would require copying another 40 lines of code into a nested `else if`.
@@ -384,11 +463,27 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
     @Override
     public TaxCalculationResult calculate(double grossIncome) {
         double pensionContribution = grossIncome * TaxRates.PENSION_CONTRIBUTION_RATE;
-        ...
+        double disabilityContribution = grossIncome * TaxRates.DISABILITY_CONTRIBUTION_RATE;
+        double sicknessContribution = grossIncome * TaxRates.SICKNESS_CONTRIBUTION_RATE;
+
+        double healthContributionBase = grossIncome;
+        double healthContribution = healthContributionBase * TaxRates.HEALTH_CONTRIBUTION_RATE;
+        double taxDeductibleHealthContribution = healthContributionBase * TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE;
+
         double taxDeductibleExpenses = calculateTaxDeductibleExpenses(grossIncome);
-        ...
+        double taxableBase = grossIncome - taxDeductibleExpenses;
+        double roundedTaxableBase = round(taxableBase);
+
+        double advanceTax = (roundedTaxableBase * 18.0) / 100.0;
         double taxFreeAllowance = getTaxFreeAllowance();
-        ...
+        double reducedTax = advanceTax - taxFreeAllowance;
+
+        double advanceTaxPaid = advanceTax - taxDeductibleHealthContribution - taxFreeAllowance;
+        double roundedAdvanceTaxPaid = round(advanceTaxPaid);
+
+        double totalSocialSecurity = pensionContribution + disabilityContribution + sicknessContribution;
+        double netIncome = grossIncome - (totalSocialSecurity + healthContribution + roundedAdvanceTaxPaid);
+
         return new TaxCalculationResult(...);
     }
 
@@ -398,7 +493,7 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
 ```
 
 3. **Concrete Strategies** (`EmploymentTaxStrategy.java`, `CivilContractTaxStrategy.java`):
-Each strategy is now only ~15 lines long!
+Each strategy is now concise (~15 lines):
 ```java
 public class EmploymentTaxStrategy extends AbstractTaxStrategy {
     @Override public ContractType getContractType() { return ContractType.EMPLOYMENT; }
@@ -427,7 +522,16 @@ public class TaxCalculatorService {
         strategies.put(strategy.getContractType(), strategy);
     }
 
-    public TaxCalculationResult calculate(ContractType contractType, double grossIncome) { ... }
+    public TaxCalculationResult calculate(ContractType contractType, double grossIncome) {
+        if (grossIncome < 0) {
+            throw new IllegalArgumentException("Income cannot be negative: " + grossIncome);
+        }
+        TaxStrategy strategy = strategies.get(contractType);
+        if (strategy == null) {
+            throw new IllegalArgumentException("No tax calculation strategy registered for contract type: " + contractType);
+        }
+        return strategy.calculate(grossIncome);
+    }
 }
 ```
 
@@ -437,7 +541,7 @@ public class TaxCalculatorService {
 
 ---
 
-### Decision 7: Separation of Concerns (Business Logic vs Presentation & I/O)
+### Decision 9: Separation of Concerns (Business Logic vs Presentation & I/O)
 
 #### Context & Problem
 Console I/O (`System.in`, `System.out`), stream parsing, number formatting, math calculations, and exception handling were all entangled in a single monolithic method.
@@ -451,21 +555,23 @@ public static void main(String[] args) {
 
 #### New Modified Code (After)
 1. **Presentation Layer** (`TaxReportPrinter.java`):
-Encapsulates all string formatting and console printing. Can write to any `PrintStream`.
+Encapsulates all string formatting and console printing:
 ```java
 public class TaxReportPrinter {
     public void printReport(TaxCalculationResult result) {
         if (result.getContractType() == ContractType.EMPLOYMENT) {
             printEmploymentReport(result);
-        } else {
+        } else if (result.getContractType() == ContractType.CIVIL) {
             printCivilReport(result);
+        } else {
+            out.println("Unknown type of contract!");
         }
     }
 }
 ```
 
 2. **Clean Entry Point Coordinator** (`TaxCalculator.java`):
-The `main` method is reduced to 12 readable lines:
+The `main` method is reduced to 14 readable lines:
 ```java
 public static void main(String[] args) {
     try {
@@ -473,8 +579,6 @@ public static void main(String[] args) {
 
         TaxCalculatorService service = new TaxCalculatorService();
         TaxCalculationResult result = service.calculate(input.contractType, input.income);
-
-        populateLegacyFields(result);
 
         TaxReportPrinter printer = new TaxReportPrinter();
         printer.printReport(result);
@@ -515,6 +619,8 @@ java com.bartoszwalter.students.taxes.TaxCalculatorTest
 | Quality Attribute | Original `TaxCalculator.java` | Refactored Architecture |
 |---|---|---|
 | **Lines in `main`** | 108 lines | 14 lines |
+| **Dead Code / Deprecated** | Cluttered with legacy static state | 0 deprecated fields/methods (pure dead code removal) |
+| **Comments** | Confusing/misleading comments | 0 comments (100% self-documenting code) |
 | **State Management** | 12 mutable `public static` fields | Immutable `TaxCalculationResult` |
 | **Magic Numbers** | Scattered throughout formulas | Centralized in `TaxRates` |
 | **Contract Extensibility** | Requires editing nested `if-else` | Strategy Pattern (OCP compliant) |

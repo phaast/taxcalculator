@@ -55,7 +55,6 @@ public class TaxCalculatorTest {
             ContractType.fromCode('Z');
             throw new AssertionError("Expected IllegalArgumentException for unknown contract code 'Z'");
         } catch (IllegalArgumentException expected) {
-            // Success
         }
     }
 

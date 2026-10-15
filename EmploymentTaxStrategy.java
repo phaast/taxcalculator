@@ -1,8 +1,5 @@
 package com.bartoszwalter.students.taxes;
 
-/**
- * Strategy implementation for Employment Contracts (Umowa o Pracę).
- */
 public class EmploymentTaxStrategy extends AbstractTaxStrategy {
 
     @Override

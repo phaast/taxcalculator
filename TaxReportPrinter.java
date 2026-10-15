@@ -3,10 +3,6 @@ package com.bartoszwalter.students.taxes;
 import java.io.PrintStream;
 import java.text.DecimalFormat;
 
-/**
- * Handles presentation and formatting of tax calculation reports.
- * Decouples presentation logic from computational business rules (SRP).
- */
 public class TaxReportPrinter {
 
     private final DecimalFormat currencyFormat = new DecimalFormat("#.00");

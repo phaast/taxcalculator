@@ -1,38 +1,29 @@
 package com.bartoszwalter.students.taxes;
 
-/**
- * Immutable data transfer object holding the full breakdown of a tax calculation.
- * Encapsulates the results cleanly without relying on mutable global state.
- */
 public class TaxCalculationResult {
 
     private final ContractType contractType;
     private final double grossIncome;
 
-    // Social Security (ZUS) contributions
     private final double pensionContribution;
     private final double disabilityContribution;
     private final double sicknessContribution;
     private final double totalSocialSecurity;
 
-    // Health insurance contributions
     private final double healthContributionBase;
     private final double healthContribution;
     private final double taxDeductibleHealthContribution;
 
-    // Tax base & allowances
     private final double taxDeductibleExpenses;
     private final double taxableBase;
     private final double roundedTaxableBase;
 
-    // Advance tax calculations
     private final double advanceTax;
     private final double taxFreeAllowance;
     private final double reducedTax;
     private final double advanceTaxPaid;
     private final double roundedAdvanceTaxPaid;
 
-    // Final take-home pay
     private final double netIncome;
 
     public TaxCalculationResult(
