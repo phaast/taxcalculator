@@ -1,5 +1,7 @@
 package com.bartoszwalter.students.taxes;
 
+import java.math.BigDecimal;
+
 public class EmploymentTaxStrategy extends AbstractTaxStrategy {
 
     @Override
@@ -8,12 +10,12 @@ public class EmploymentTaxStrategy extends AbstractTaxStrategy {
     }
 
     @Override
-    protected double calculateTaxDeductibleExpenses(double grossIncome) {
+    protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal grossIncome) {
         return TaxRates.STANDARD_EMPLOYMENT_EXPENSES;
     }
 
     @Override
-    protected double getTaxFreeAllowance() {
+    protected BigDecimal getTaxFreeAllowance() {
         return TaxRates.EMPLOYMENT_TAX_FREE_ALLOWANCE;
     }
 }

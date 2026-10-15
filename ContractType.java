@@ -1,24 +1,16 @@
 package com.bartoszwalter.students.taxes;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
 public enum ContractType {
     EMPLOYMENT('E', "EMPLOYMENT"),
     CIVIL('C', "CIVIL");
 
     private final char code;
     private final String description;
-
-    ContractType(char code, String description) {
-        this.code = code;
-        this.description = description;
-    }
-
-    public char getCode() {
-        return code;
-    }
-
-    public String getDescription() {
-        return description;
-    }
 
     public static ContractType fromCode(char code) {
         char upperCode = Character.toUpperCase(code);

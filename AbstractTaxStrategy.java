@@ -1,61 +1,69 @@
 package com.bartoszwalter.students.taxes;
 
-import java.text.DecimalFormat;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 public abstract class AbstractTaxStrategy implements TaxStrategy {
 
-    private final DecimalFormat integerFormat = new DecimalFormat("#");
+    private static final int CURRENCY_SCALE = 2;
+    private static final int INTEGER_SCALE = 0;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_EVEN;
 
     @Override
-    public TaxCalculationResult calculate(double grossIncome) {
-        double pensionContribution = grossIncome * TaxRates.PENSION_CONTRIBUTION_RATE;
-        double disabilityContribution = grossIncome * TaxRates.DISABILITY_CONTRIBUTION_RATE;
-        double sicknessContribution = grossIncome * TaxRates.SICKNESS_CONTRIBUTION_RATE;
+    public TaxCalculationResult calculate(BigDecimal grossIncome) {
+        BigDecimal pensionContribution = applyRate(grossIncome, TaxRates.PENSION_CONTRIBUTION_RATE);
+        BigDecimal disabilityContribution = applyRate(grossIncome, TaxRates.DISABILITY_CONTRIBUTION_RATE);
+        BigDecimal sicknessContribution = applyRate(grossIncome, TaxRates.SICKNESS_CONTRIBUTION_RATE);
 
-        double healthContributionBase = grossIncome;
-        double healthContribution = healthContributionBase * TaxRates.HEALTH_CONTRIBUTION_RATE;
-        double taxDeductibleHealthContribution = healthContributionBase * TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE;
+        BigDecimal healthContributionBase = grossIncome;
+        BigDecimal healthContribution = applyRate(healthContributionBase, TaxRates.HEALTH_CONTRIBUTION_RATE);
+        BigDecimal taxDeductibleHealthContribution = applyRate(healthContributionBase, TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE);
 
-        double taxDeductibleExpenses = calculateTaxDeductibleExpenses(grossIncome);
-        double taxableBase = grossIncome - taxDeductibleExpenses;
-        double roundedTaxableBase = round(taxableBase);
+        BigDecimal taxDeductibleExpenses = calculateTaxDeductibleExpenses(grossIncome);
+        BigDecimal taxableBase = grossIncome.subtract(taxDeductibleExpenses);
+        BigDecimal roundedTaxableBase = roundToWhole(taxableBase);
 
-        double advanceTax = (roundedTaxableBase * 18.0) / 100.0;
-        double taxFreeAllowance = getTaxFreeAllowance();
-        double reducedTax = advanceTax - taxFreeAllowance;
+        BigDecimal advanceTax = applyRate(roundedTaxableBase, TaxRates.ADVANCE_TAX_RATE);
+        BigDecimal taxFreeAllowance = getTaxFreeAllowance();
+        BigDecimal reducedTax = advanceTax.subtract(taxFreeAllowance);
 
-        double advanceTaxPaid = advanceTax - taxDeductibleHealthContribution - taxFreeAllowance;
-        double roundedAdvanceTaxPaid = round(advanceTaxPaid);
+        BigDecimal advanceTaxPaid = advanceTax.subtract(taxDeductibleHealthContribution).subtract(taxFreeAllowance);
+        BigDecimal roundedAdvanceTaxPaid = roundToWhole(advanceTaxPaid);
 
-        double totalSocialSecurity = pensionContribution + disabilityContribution + sicknessContribution;
-        double netIncome = grossIncome - (totalSocialSecurity + healthContribution + roundedAdvanceTaxPaid);
+        BigDecimal totalSocialSecurity = pensionContribution.add(disabilityContribution).add(sicknessContribution);
+        BigDecimal netIncome = grossIncome.subtract(totalSocialSecurity.add(healthContribution).add(roundedAdvanceTaxPaid));
 
-        return new TaxCalculationResult(
-                getContractType(),
-                grossIncome,
-                pensionContribution,
-                disabilityContribution,
-                sicknessContribution,
-                healthContributionBase,
-                healthContribution,
-                taxDeductibleHealthContribution,
-                taxDeductibleExpenses,
-                taxableBase,
-                roundedTaxableBase,
-                advanceTax,
-                taxFreeAllowance,
-                reducedTax,
-                advanceTaxPaid,
-                roundedAdvanceTaxPaid,
-                netIncome
-        );
+        return TaxCalculationResult.builder()
+                .contractType(getContractType())
+                .grossIncome(grossIncome)
+                .pensionContribution(pensionContribution)
+                .disabilityContribution(disabilityContribution)
+                .sicknessContribution(sicknessContribution)
+                .totalSocialSecurity(totalSocialSecurity)
+                .healthContributionBase(healthContributionBase)
+                .healthContribution(healthContribution)
+                .taxDeductibleHealthContribution(taxDeductibleHealthContribution)
+                .taxDeductibleExpenses(taxDeductibleExpenses)
+                .taxableBase(taxableBase)
+                .roundedTaxableBase(roundedTaxableBase)
+                .advanceTax(advanceTax)
+                .taxFreeAllowance(taxFreeAllowance)
+                .reducedTax(reducedTax)
+                .advanceTaxPaid(advanceTaxPaid)
+                .roundedAdvanceTaxPaid(roundedAdvanceTaxPaid)
+                .netIncome(netIncome)
+                .build();
     }
 
-    protected abstract double calculateTaxDeductibleExpenses(double grossIncome);
+    protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal grossIncome);
 
-    protected abstract double getTaxFreeAllowance();
+    protected abstract BigDecimal getTaxFreeAllowance();
 
-    protected double round(double value) {
-        return Double.parseDouble(integerFormat.format(value));
+    protected BigDecimal applyRate(BigDecimal amount, BigDecimal rate) {
+        return amount.multiply(rate).setScale(CURRENCY_SCALE, ROUNDING_MODE);
+    }
+
+    protected BigDecimal roundToWhole(BigDecimal amount) {
+        return amount.setScale(INTEGER_SCALE, ROUNDING_MODE);
     }
 }

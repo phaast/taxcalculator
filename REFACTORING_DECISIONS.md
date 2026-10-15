@@ -11,14 +11,16 @@ The original `TaxCalculator.java` implementation suffered from severe code smell
 ### Core Problems Identified:
 1. **Broken Compilation**: Duplicate declarations and syntax errors from bad find-replace operations (`advanceTaxPaidadvanceTax`, `soc_sick_secur`, missing `advanceTax` and `taxPaid`).
 2. **Global Mutable State**: All calculations mutated 12 `public static` fields directly, introducing hidden side-effects, making thread-safety impossible, and preventing isolated testing.
-3. **Massive Main Method & God Method**: The `main` method spanned over 100 lines, doing input reading, input validation, math calculations, business logic branching, string formatting, and console output.
-4. **Code Duplication (Violation of DRY)**: The Employment (`'E'`) and Civil (`'C'`) contract logic duplicated nearly 90% of identical calculation formulas and printing code.
-5. **Violation of Open/Closed Principle (OCP)**: Adding any new contract type (e.g. B2B, Specific-Task / *Umowa o Dzieło*) required modifying giant nested `if-else` blocks in `main`.
-6. **Magic Numbers**: Unexplained numeric literals (`9.76`, `1.5`, `2.45`, `9.0`, `7.75`, `18.0`, `111.25`, `46.33`, `20.0`) scattered throughout the code.
-7. **Poor & Cryptic Naming**: Obscure identifiers (`isr`, `br`, `df00`, `df`, `soc_security`, `soc_health1`, `soc_health2`, `taxedIncome0`, `advanceTaxPaid0`, `d_income`).
-8. **Tightly Coupled I/O and Business Logic**: Calculation code was interwoven with `System.in` and `System.out`, making pure unit testing impossible without standard stream redirection.
-9. **Dead Code & Deprecated Shims**: Preserving unused legacy static fields and methods clutters the codebase with dead code.
-10. **Redundant Comments**: Relying on comments rather than expressive code contradicts Clean Code.
+3. **Floating-Point Inaccuracy**: Using `double` for currency and tax math risks IEEE 754 precision issues (e.g. `0.1 + 0.2 != 0.3`). Financial systems should always operate on exact numbers (`BigDecimal` or grosze).
+4. **Boilerplate Clutter**: Large classes filled with manual getters, builders, and constructors distract from domain rules.
+5. **Massive Main Method & God Method**: The `main` method spanned over 100 lines, doing input reading, input validation, math calculations, business logic branching, string formatting, and console output.
+6. **Code Duplication (Violation of DRY)**: The Employment (`'E'`) and Civil (`'C'`) contract logic duplicated nearly 90% of identical calculation formulas and printing code.
+7. **Violation of Open/Closed Principle (OCP)**: Adding any new contract type (e.g. B2B, Specific-Task / *Umowa o Dzieło*) required modifying giant nested `if-else` blocks in `main`.
+8. **Magic Numbers**: Unexplained numeric literals (`9.76`, `1.5`, `2.45`, `9.0`, `7.75`, `18.0`, `111.25`, `46.33`, `20.0`) scattered throughout the code.
+9. **Poor & Cryptic Naming**: Obscure identifiers (`isr`, `br`, `df00`, `df`, `soc_security`, `soc_health1`, `soc_health2`, `taxedIncome0`, `advanceTaxPaid0`, `d_income`).
+10. **Tightly Coupled I/O and Business Logic**: Calculation code was interwoven with `System.in` and `System.out`, making pure unit testing impossible without standard stream redirection.
+11. **Dead Code & Deprecated Shims**: Preserving unused legacy static fields and methods clutters the codebase with dead code.
+12. **Redundant Comments**: Relying on comments rather than expressive code contradicts Clean Code.
 
 ---
 
@@ -36,59 +38,60 @@ classDiagram
     class TaxCalculatorService {
         -strategies: Map~ContractType, TaxStrategy~
         +registerStrategy(strategy: TaxStrategy)
-        +calculate(type: ContractType, income: double) TaxCalculationResult
+        +calculate(type: ContractType, income: BigDecimal) TaxCalculationResult
     }
 
     class TaxStrategy {
         <<interface>>
         +getContractType() ContractType
-        +calculate(income: double) TaxCalculationResult
+        +calculate(income: BigDecimal) TaxCalculationResult
     }
 
     class AbstractTaxStrategy {
         <<abstract>>
-        +calculate(income: double) TaxCalculationResult
-        #calculateTaxDeductibleExpenses(income: double)* double
-        #getTaxFreeAllowance()* double
-        #round(value: double) double
+        +calculate(income: BigDecimal) TaxCalculationResult
+        #calculateTaxDeductibleExpenses(income: BigDecimal)* BigDecimal
+        #getTaxFreeAllowance()* BigDecimal
+        #applyRate(amount: BigDecimal, rate: BigDecimal) BigDecimal
+        #roundToWhole(amount: BigDecimal) BigDecimal
     }
 
     class EmploymentTaxStrategy {
         +getContractType() ContractType
-        #calculateTaxDeductibleExpenses(income: double) double
-        #getTaxFreeAllowance() double
+        #calculateTaxDeductibleExpenses(income: BigDecimal) BigDecimal
+        #getTaxFreeAllowance() BigDecimal
     }
 
     class CivilContractTaxStrategy {
         +getContractType() ContractType
-        #calculateTaxDeductibleExpenses(income: double) double
-        #getTaxFreeAllowance() double
+        #calculateTaxDeductibleExpenses(income: BigDecimal) BigDecimal
+        #getTaxFreeAllowance() BigDecimal
     }
 
     class TaxRates {
         <<constants>>
-        +PENSION_CONTRIBUTION_RATE
-        +DISABILITY_CONTRIBUTION_RATE
-        +SICKNESS_CONTRIBUTION_RATE
-        +HEALTH_CONTRIBUTION_RATE
-        +TAX_DEDUCTIBLE_HEALTH_RATE
-        +ADVANCE_TAX_RATE
-        +STANDARD_EMPLOYMENT_EXPENSES
-        +EMPLOYMENT_TAX_FREE_ALLOWANCE
-        +CIVIL_EXPENSES_PERCENTAGE
+        +PENSION_CONTRIBUTION_RATE: BigDecimal
+        +DISABILITY_CONTRIBUTION_RATE: BigDecimal
+        +SICKNESS_CONTRIBUTION_RATE: BigDecimal
+        +HEALTH_CONTRIBUTION_RATE: BigDecimal
+        +TAX_DEDUCTIBLE_HEALTH_RATE: BigDecimal
+        +ADVANCE_TAX_RATE: BigDecimal
+        +STANDARD_EMPLOYMENT_EXPENSES: BigDecimal
+        +EMPLOYMENT_TAX_FREE_ALLOWANCE: BigDecimal
+        +CIVIL_EXPENSES_PERCENTAGE: BigDecimal
     }
 
     class TaxCalculationResult {
-        <<immutable>>
-        +getGrossIncome() double
-        +getPensionContribution() double
-        +getDisabilityContribution() double
-        +getSicknessContribution() double
-        +getHealthContribution() double
-        +getTaxDeductibleExpenses() double
-        +getTaxableBase() double
-        +getAdvanceTax() double
-        +getNetIncome() double
+        <<immutable, lombok>>
+        +grossIncome: BigDecimal
+        +pensionContribution: BigDecimal
+        +disabilityContribution: BigDecimal
+        +sicknessContribution: BigDecimal
+        +healthContribution: BigDecimal
+        +taxDeductibleExpenses: BigDecimal
+        +taxableBase: BigDecimal
+        +advanceTax: BigDecimal
+        +netIncome: BigDecimal
     }
 
     class TaxReportPrinter {
@@ -117,23 +120,19 @@ The source code failed to compile with 13 errors caused by erroneous variable re
 
 #### Previous Code (Before)
 ```java
-// TaxCalculator.java (lines 19-22)
-public static double advanceTaxPaidadvanceTax = 0; // advance tax 18%
-public static double taxFreeIncome = 46.33; // tax-free income monthly 46,33 PLN
+public static double advanceTaxPaidadvanceTax = 0;
+public static double taxFreeIncome = 46.33;
 public static double advanceTaxPaidadvanceTax = 0;
 public static double advanceTaxPaid0 = 0;
 
-// Line 115
 double advanceTax;
-System.out.println("Already paid tax = " + df00.format(taxPaid)); // taxPaid undefined
+System.out.println("Already paid tax = " + df00.format(taxPaid));
 
-// Line 135
 public static void calculateAdvanceTax() {
     advanceTaxPaidadvanceTax = advanceTax - soc_health2 - taxFreeIncome;
 }
 
-// Line 145
-soc_sick_secur = (income * 2.45) / 100; // soc_sick_secur undefined
+soc_sick_secur = (income * 2.45) / 100;
 ```
 
 #### New Modified Code (After)
@@ -158,157 +157,94 @@ Along with creating `TaxCalculatorTest.java` verifying that inputs `1000` and `5
 
 ---
 
-### Decision 2: Replacing Magic Numbers with Named Domain Constants (`TaxRates.java`)
+### Decision 2: Switching from Floating-Point (`double`) to Exact Arithmetic (`BigDecimal`)
 
 #### Context & Problem
-Raw numbers (`9.76`, `1.5`, `2.45`, `9.0`, `7.75`, `18.0`, `111.25`, `46.33`, `20.0`, `100`) were hardcoded across multiple calculations and duplicated between contract blocks. If Polish tax brackets or ZUS contribution rates change, maintaining and hunting down numbers across the codebase is error-prone.
+Floating-point arithmetic (`double`, `float`) is inherently prone to binary representation inaccuracies (IEEE 754), which can lead to off-by-one grosz rounding errors in tax calculations and financial ledgers. In enterprise and financial applications, money must always be represented either in whole minor units (grosze as integers) or via `BigDecimal` with explicit scale and rounding mode.
 
 #### Previous Code (Before)
 ```java
+public static double soc_security = 0;
 soc_security = (income * 9.76) / 100;
-soc_health_security = (income * 1.5) / 100;
-soc_sick_security = (income * 2.45) / 100;
-soc_health1 = (income * 9) / 100;
-soc_health2 = (income * 7.75) / 100;
-taxDeductibleExpenses = 111.25;
-taxDeductibleExpenses = (income * 20) / 100;
-advanceTax = (income * 18) / 100;
-```
-
-#### New Modified Code (After)
-```java
-public final class TaxRates {
-    private TaxRates() {}
-
-    public static final double PENSION_CONTRIBUTION_RATE = 9.76 / 100.0;
-    public static final double DISABILITY_CONTRIBUTION_RATE = 1.50 / 100.0;
-    public static final double SICKNESS_CONTRIBUTION_RATE = 2.45 / 100.0;
-
-    public static final double HEALTH_CONTRIBUTION_RATE = 9.00 / 100.0;
-    public static final double TAX_DEDUCTIBLE_HEALTH_RATE = 7.75 / 100.0;
-
-    public static final double ADVANCE_TAX_RATE = 18.0 / 100.0;
-
-    public static final double STANDARD_EMPLOYMENT_EXPENSES = 111.25;
-    public static final double EMPLOYMENT_TAX_FREE_ALLOWANCE = 46.33;
-
-    public static final double CIVIL_EXPENSES_PERCENTAGE = 20.0 / 100.0;
-    public static final double CIVIL_TAX_FREE_ALLOWANCE = 0.0;
-}
-```
-
-#### Clean Code Principle & Rationale
-- **Clean Code Ch. 17 (G25: Replace Magic Numbers with Named Constants)**: Unnamed numbers obscure developer intent. Giving each rate a domain-explicit name turns mysterious math into readable statutory rules.
-- **Single Source of Truth**: Centralizing tax rates ensures updating statutory parameters happens in exactly one place.
-
----
-
-### Decision 3: Meaningful & Consistent Naming Conventions
-
-#### Context & Problem
-Variables used mixed conventions (snake_case in Java), cryptic abbreviations, and arbitrary numbering:
-- `df00` and `df` (unclear number formatting identifiers)
-- `soc_security`, `soc_health_security`, `soc_sick_security` (snake_case instead of standard Java camelCase)
-- `soc_health1` and `soc_health2` (disinformative names; 1 is health insurance paid to ZUS, 2 is health insurance deducted from income tax)
-- `taxedIncome0` and `advanceTaxPaid0` (digit suffixes representing rounded values)
-- `d_income` (vague single-letter prefix)
-
-#### Previous Code (Before)
-```java
-DecimalFormat df00 = new DecimalFormat("#.00");
-DecimalFormat df = new DecimalFormat("#");
-
-double d_income = calculateIncome(income);
-calculateOtherTaxes(income);
 double taxedIncome = income - taxDeductibleExpenses;
 double taxedIncome0 = Double.parseDouble(df.format(taxedIncome));
-double taxPaid = advanceTax - taxFreeIncome;
-calculateAdvanceTax();
-advanceTaxPaid0 = Double.parseDouble(df.format(advanceTaxPaid));
 ```
 
 #### New Modified Code (After)
 ```java
-private final DecimalFormat currencyFormat = new DecimalFormat("#.00");
-private final DecimalFormat integerFormat = new DecimalFormat("#");
+private static final int CURRENCY_SCALE = 2;
+private static final int INTEGER_SCALE = 0;
+private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_EVEN;
 
-double pensionContribution = grossIncome * TaxRates.PENSION_CONTRIBUTION_RATE;
-double disabilityContribution = grossIncome * TaxRates.DISABILITY_CONTRIBUTION_RATE;
-double sicknessContribution = grossIncome * TaxRates.SICKNESS_CONTRIBUTION_RATE;
+protected BigDecimal applyRate(BigDecimal amount, BigDecimal rate) {
+    return amount.multiply(rate).setScale(CURRENCY_SCALE, ROUNDING_MODE);
+}
 
-double healthContribution = healthContributionBase * TaxRates.HEALTH_CONTRIBUTION_RATE;
-double taxDeductibleHealthContribution = healthContributionBase * TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE;
-
-double taxableBase = grossIncome - taxDeductibleExpenses;
-double roundedTaxableBase = round(taxableBase);
-double reducedTax = advanceTax - taxFreeAllowance;
-double advanceTaxPaid = advanceTax - taxDeductibleHealthContribution - taxFreeAllowance;
-double roundedAdvanceTaxPaid = round(advanceTaxPaid);
-```
-
-#### Clean Code Principle & Rationale
-- **Clean Code Ch. 2 (Meaningful Names - Use Intention-Revealing Names)**: Names should explain why they exist, what they do, and how they are used without requiring comments or deciphering number suffixes.
-- **Java Convention Compliance**: Replaced C-style `snake_case` with standard Java `camelCase`.
-
----
-
-### Decision 4: Encapsulation & Eliminating Global Mutable Static State
-
-#### Context & Problem
-All calculation results were stored as mutable `public static double` fields on `TaxCalculator`.
-Any caller or parallel thread could overwrite these fields, causing race conditions, hidden temporal coupling, and severe side-effects.
-
-#### Previous Code (Before)
-```java
-public class TaxCalculator {
-    public static double income = 0;
-    public static char contractType = ' ';
-    public static double soc_security = 0;
-    public static double soc_health_security = 0;
-    public static double soc_sick_security = 0;
-    public static double taxDeductibleExpenses = 111.25; 
-    public static double soc_health1 = 0; 
-    public static double soc_health2 = 0; 
-    public static double advanceTax = 0; 
-    public static double taxFreeIncome = 46.33; 
-    public static double advanceTaxPaid = 0;
-    public static double advanceTaxPaid0 = 0;
-    ...
-```
-
-#### New Modified Code (After)
-Created `TaxCalculationResult.java`:
-```java
-public class TaxCalculationResult {
-    private final ContractType contractType;
-    private final double grossIncome;
-    private final double pensionContribution;
-    private final double disabilityContribution;
-    private final double sicknessContribution;
-    private final double healthContributionBase;
-    private final double healthContribution;
-    private final double taxDeductibleHealthContribution;
-    private final double taxDeductibleExpenses;
-    private final double taxableBase;
-    private final double roundedTaxableBase;
-    private final double advanceTax;
-    private final double taxFreeAllowance;
-    private final double reducedTax;
-    private final double advanceTaxPaid;
-    private final double roundedAdvanceTaxPaid;
-    private final double netIncome;
-
-    // Fully initialized via constructor; all fields final with pure getters
+protected BigDecimal roundToWhole(BigDecimal amount) {
+    return amount.setScale(INTEGER_SCALE, ROUNDING_MODE);
 }
 ```
 
 #### Clean Code Principle & Rationale
-- **Clean Code Ch. 6 (Objects and Data Structures)**: Data structures should hide their implementation and protect invariants through immutability.
-- **Side-Effect Free Functions (Clean Code Ch. 3)**: A calculation should be a pure transformation from input data to output data, producing no hidden mutations.
+- **Correctness & Precision**: `BigDecimal` guarantees arbitrary-precision signed decimals with explicit rounding semantics.
+- **Explicit Rounding Modes**: Rather than relying on string-parsing through `Double.parseDouble(df.format(value))`, rounding is directly handled by `BigDecimal.setScale()`.
 
 ---
 
-### Decision 5: Total Elimination of Dead Code & Deprecated Shims
+### Decision 3: Eliminating Boilerplate with Project Lombok
+
+#### Context & Problem
+Creating immutable domain models and data transfer objects in plain Java often generates hundreds of lines of boilerplate: private fields, constructors, getters, equals, hashCode, and builders. This boilerplate drowns the actual business logic and reduces readability.
+
+#### Previous Code (Before)
+```java
+// TaxCalculationResult.java: 150 lines of boilerplate constructor and 18 getters
+public class TaxCalculationResult {
+    private final ContractType contractType;
+    ...
+    public TaxCalculationResult(ContractType contractType, ...) {
+        this.contractType = contractType;
+        ...
+    }
+    public ContractType getContractType() { return contractType; }
+    ... (17 more getters)
+}
+```
+
+#### New Modified Code (After)
+```java
+@Getter
+@Builder
+@AllArgsConstructor
+public class TaxCalculationResult {
+    private final ContractType contractType;
+    private final BigDecimal grossIncome;
+    private final BigDecimal pensionContribution;
+    private final BigDecimal disabilityContribution;
+    private final BigDecimal sicknessContribution;
+    private final BigDecimal totalSocialSecurity;
+    private final BigDecimal healthContributionBase;
+    private final BigDecimal healthContribution;
+    private final BigDecimal taxDeductibleHealthContribution;
+    private final BigDecimal taxDeductibleExpenses;
+    private final BigDecimal taxableBase;
+    private final BigDecimal roundedTaxableBase;
+    private final BigDecimal advanceTax;
+    private final BigDecimal taxFreeAllowance;
+    private final BigDecimal reducedTax;
+    private final BigDecimal advanceTaxPaid;
+    private final BigDecimal roundedAdvanceTaxPaid;
+    private final BigDecimal netIncome;
+}
+```
+Lombok is also applied to `ContractType` (`@Getter`, `@AllArgsConstructor`) and `InputData` (`@Getter`, `@AllArgsConstructor`).
+
+#### Clean Code Principle & Rationale
+- **Conciseness & High Signal-to-Noise Ratio**: Using Lombok annotations eliminates noisy boilerplate while keeping classes fully immutable, clear, and readable.
+
+---
+
+### Decision 4: Total Elimination of Dead Code & Deprecated Shims
 
 #### Context & Problem
 Initially, legacy static fields and methods were kept as `@Deprecated` backwards-compatibility shims. However, in clean codebases, dead code and unused backward-compatibility clutter should not be retained when refactoring internal designs. Git version control preserves history; code itself must remain clean, focused, and free of obsolete artifacts.
@@ -330,7 +266,7 @@ Initially, legacy static fields and methods were kept as `@Deprecated` backwards
 
 @Deprecated public static void calculateAdvanceTax() { ... }
 @Deprecated public static void calculateTax(double taxedIncome) { ... }
-@Deprecated public static double calculateIncome(double grossIncome) { ... }
+@Deprecated public static void calculateIncome(double grossIncome) { ... }
 @Deprecated public static void calculateOtherTaxes(double basis) { ... }
 ```
 
@@ -342,7 +278,7 @@ All 12 deprecated static fields, the `populateLegacyFields` helper, and all 4 le
 
 ---
 
-### Decision 6: Code as Documentation — Complete Removal of Comments
+### Decision 5: Code as Documentation — Complete Removal of Comments
 
 #### Context & Problem
 Comments frequently restate what clean code already expresses, or become stale and misleading when logic changes. In accordance with Clean Code principles, code should be so clean, intention-revealing, and expressive that comments become completely unnecessary.
@@ -367,15 +303,60 @@ All comments (Javadoc, inline notes, section dividers) were completely removed a
 public final class TaxRates {
     private TaxRates() {}
 
-    public static final double PENSION_CONTRIBUTION_RATE = 9.76 / 100.0;
-    public static final double DISABILITY_CONTRIBUTION_RATE = 1.50 / 100.0;
-    public static final double SICKNESS_CONTRIBUTION_RATE = 2.45 / 100.0;
+    public static final BigDecimal PENSION_CONTRIBUTION_RATE = new BigDecimal("0.0976");
+    public static final BigDecimal DISABILITY_CONTRIBUTION_RATE = new BigDecimal("0.0150");
+    public static final BigDecimal SICKNESS_CONTRIBUTION_RATE = new BigDecimal("0.0245");
 ...
 ```
 
 #### Clean Code Principle & Rationale
 - **Clean Code Ch. 4 (Comments)**: "Don't comment bad code — rewrite it." (Brian W. Kernighan and P. J. Plaugher).
 - A comment is often a failure to express the intent through clean code. If class, method, and variable names are chosen properly, comments are redundant clutter.
+
+---
+
+### Decision 6: Replacing Magic Numbers with Named Domain Constants (`TaxRates.java`)
+
+#### Context & Problem
+Raw numbers (`0.0976`, `0.0150`, `0.0245`, `0.0900`, `0.0775`, `0.18`, `111.25`, `46.33`, `0.20`) were hardcoded across multiple calculations and duplicated between contract blocks.
+
+#### Previous Code (Before)
+```java
+soc_security = (income * 9.76) / 100;
+soc_health_security = (income * 1.5) / 100;
+soc_sick_security = (income * 2.45) / 100;
+soc_health1 = (income * 9) / 100;
+soc_health2 = (income * 7.75) / 100;
+taxDeductibleExpenses = 111.25;
+taxDeductibleExpenses = (income * 20) / 100;
+advanceTax = (income * 18) / 100;
+```
+
+#### New Modified Code (After)
+```java
+public final class TaxRates {
+    private TaxRates() {}
+
+    public static final BigDecimal PENSION_CONTRIBUTION_RATE = new BigDecimal("0.0976");
+    public static final BigDecimal DISABILITY_CONTRIBUTION_RATE = new BigDecimal("0.0150");
+    public static final BigDecimal SICKNESS_CONTRIBUTION_RATE = new BigDecimal("0.0245");
+
+    public static final BigDecimal HEALTH_CONTRIBUTION_RATE = new BigDecimal("0.0900");
+    public static final BigDecimal TAX_DEDUCTIBLE_HEALTH_RATE = new BigDecimal("0.0775");
+
+    public static final BigDecimal ADVANCE_TAX_RATE = new BigDecimal("0.18");
+
+    public static final BigDecimal STANDARD_EMPLOYMENT_EXPENSES = new BigDecimal("111.25");
+    public static final BigDecimal EMPLOYMENT_TAX_FREE_ALLOWANCE = new BigDecimal("46.33");
+
+    public static final BigDecimal CIVIL_EXPENSES_PERCENTAGE = new BigDecimal("0.20");
+    public static final BigDecimal CIVIL_TAX_FREE_ALLOWANCE = new BigDecimal("0.00");
+}
+```
+
+#### Clean Code Principle & Rationale
+- **Clean Code Ch. 17 (G25: Replace Magic Numbers with Named Constants)**: Unnamed numbers obscure developer intent. Giving each rate a domain-explicit name turns mysterious math into readable statutory rules.
+- **Single Source of Truth**: Centralizing tax rates ensures updating statutory parameters happens in exactly one place.
 
 ---
 
@@ -396,25 +377,14 @@ else { System.out.println("Unknown type of contract!"); }
 
 #### New Modified Code (After)
 ```java
+@Getter
+@AllArgsConstructor
 public enum ContractType {
     EMPLOYMENT('E', "EMPLOYMENT"),
     CIVIL('C', "CIVIL");
 
     private final char code;
     private final String description;
-
-    ContractType(char code, String description) {
-        this.code = code;
-        this.description = description;
-    }
-
-    public char getCode() {
-        return code;
-    }
-
-    public String getDescription() {
-        return description;
-    }
 
     public static ContractType fromCode(char code) {
         char upperCode = Character.toUpperCase(code);
@@ -452,7 +422,7 @@ if (contractType == 'E') {
 ```java
 public interface TaxStrategy {
     ContractType getContractType();
-    TaxCalculationResult calculate(double grossIncome);
+    TaxCalculationResult calculate(BigDecimal grossIncome);
 }
 ```
 
@@ -461,50 +431,34 @@ Encapsulates common calculation steps, delegating only contract-specific variati
 ```java
 public abstract class AbstractTaxStrategy implements TaxStrategy {
     @Override
-    public TaxCalculationResult calculate(double grossIncome) {
-        double pensionContribution = grossIncome * TaxRates.PENSION_CONTRIBUTION_RATE;
-        double disabilityContribution = grossIncome * TaxRates.DISABILITY_CONTRIBUTION_RATE;
-        double sicknessContribution = grossIncome * TaxRates.SICKNESS_CONTRIBUTION_RATE;
-
-        double healthContributionBase = grossIncome;
-        double healthContribution = healthContributionBase * TaxRates.HEALTH_CONTRIBUTION_RATE;
-        double taxDeductibleHealthContribution = healthContributionBase * TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE;
-
-        double taxDeductibleExpenses = calculateTaxDeductibleExpenses(grossIncome);
-        double taxableBase = grossIncome - taxDeductibleExpenses;
-        double roundedTaxableBase = round(taxableBase);
-
-        double advanceTax = (roundedTaxableBase * 18.0) / 100.0;
-        double taxFreeAllowance = getTaxFreeAllowance();
-        double reducedTax = advanceTax - taxFreeAllowance;
-
-        double advanceTaxPaid = advanceTax - taxDeductibleHealthContribution - taxFreeAllowance;
-        double roundedAdvanceTaxPaid = round(advanceTaxPaid);
-
-        double totalSocialSecurity = pensionContribution + disabilityContribution + sicknessContribution;
-        double netIncome = grossIncome - (totalSocialSecurity + healthContribution + roundedAdvanceTaxPaid);
-
-        return new TaxCalculationResult(...);
+    public TaxCalculationResult calculate(BigDecimal grossIncome) {
+        BigDecimal pensionContribution = applyRate(grossIncome, TaxRates.PENSION_CONTRIBUTION_RATE);
+        ...
+        BigDecimal taxDeductibleExpenses = calculateTaxDeductibleExpenses(grossIncome);
+        ...
+        BigDecimal taxFreeAllowance = getTaxFreeAllowance();
+        ...
+        return TaxCalculationResult.builder()...build();
     }
 
-    protected abstract double calculateTaxDeductibleExpenses(double grossIncome);
-    protected abstract double getTaxFreeAllowance();
+    protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal grossIncome);
+    protected abstract BigDecimal getTaxFreeAllowance();
 }
 ```
 
 3. **Concrete Strategies** (`EmploymentTaxStrategy.java`, `CivilContractTaxStrategy.java`):
-Each strategy is now concise (~15 lines):
+Each strategy is concise (~15 lines):
 ```java
 public class EmploymentTaxStrategy extends AbstractTaxStrategy {
     @Override public ContractType getContractType() { return ContractType.EMPLOYMENT; }
-    @Override protected double calculateTaxDeductibleExpenses(double income) { return TaxRates.STANDARD_EMPLOYMENT_EXPENSES; }
-    @Override protected double getTaxFreeAllowance() { return TaxRates.EMPLOYMENT_TAX_FREE_ALLOWANCE; }
+    @Override protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal income) { return TaxRates.STANDARD_EMPLOYMENT_EXPENSES; }
+    @Override protected BigDecimal getTaxFreeAllowance() { return TaxRates.EMPLOYMENT_TAX_FREE_ALLOWANCE; }
 }
 
 public class CivilContractTaxStrategy extends AbstractTaxStrategy {
     @Override public ContractType getContractType() { return ContractType.CIVIL; }
-    @Override protected double calculateTaxDeductibleExpenses(double income) { return income * TaxRates.CIVIL_EXPENSES_PERCENTAGE; }
-    @Override protected double getTaxFreeAllowance() { return TaxRates.CIVIL_TAX_FREE_ALLOWANCE; }
+    @Override protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal income) { return applyRate(income, TaxRates.CIVIL_EXPENSES_PERCENTAGE); }
+    @Override protected BigDecimal getTaxFreeAllowance() { return TaxRates.CIVIL_TAX_FREE_ALLOWANCE; }
 }
 ```
 
@@ -522,9 +476,9 @@ public class TaxCalculatorService {
         strategies.put(strategy.getContractType(), strategy);
     }
 
-    public TaxCalculationResult calculate(ContractType contractType, double grossIncome) {
-        if (grossIncome < 0) {
-            throw new IllegalArgumentException("Income cannot be negative: " + grossIncome);
+    public TaxCalculationResult calculate(ContractType contractType, BigDecimal grossIncome) {
+        if (grossIncome == null || grossIncome.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Income cannot be negative or null");
         }
         TaxStrategy strategy = strategies.get(contractType);
         if (strategy == null) {
@@ -578,7 +532,7 @@ public static void main(String[] args) {
         InputData input = readInput();
 
         TaxCalculatorService service = new TaxCalculatorService();
-        TaxCalculationResult result = service.calculate(input.contractType, input.income);
+        TaxCalculationResult result = service.calculate(input.getContractType(), input.getIncome());
 
         TaxReportPrinter printer = new TaxReportPrinter();
         printer.printReport(result);
@@ -603,12 +557,12 @@ public static void main(String[] args) {
 To ensure complete backward compatibility without regressions, a dual testing strategy was adopted:
 
 1. **Characterization Tests**: Captured exact system console inputs and validated string outputs against baseline tests.
-2. **Direct Service Unit Tests**: Verified mathematical outputs and edge cases (negative income, invalid contract codes) directly via `TaxCalculatorService` without mocking I/O.
+2. **Direct Service Unit Tests**: Verified mathematical outputs and edge cases (negative income, invalid contract codes) directly via `TaxCalculatorService` using exact `BigDecimal` assertions without mocking I/O.
 
 ### Test Execution:
 ```bash
-javac -d . *.java
-java com.bartoszwalter.students.taxes.TaxCalculatorTest
+javac -cp "lib/lombok.jar" -processorpath "lib/lombok.jar" -d . *.java
+java -cp ".;lib/lombok.jar" com.bartoszwalter.students.taxes.TaxCalculatorTest
 ```
 **Result**: `ALL CHARACTERIZATION & UNIT TESTS PASSED SUCCESSFULLY!`
 
@@ -619,6 +573,8 @@ java com.bartoszwalter.students.taxes.TaxCalculatorTest
 | Quality Attribute | Original `TaxCalculator.java` | Refactored Architecture |
 |---|---|---|
 | **Lines in `main`** | 108 lines | 14 lines |
+| **Numeric Type** | `double` (floating-point precision bugs) | `BigDecimal` (exact currency arithmetic) |
+| **Boilerplate Reduction** | 150+ lines of manual constructors & getters | Clean domain models with Lombok (`@Getter`, `@Builder`, `@AllArgsConstructor`) |
 | **Dead Code / Deprecated** | Cluttered with legacy static state | 0 deprecated fields/methods (pure dead code removal) |
 | **Comments** | Confusing/misleading comments | 0 comments (100% self-documenting code) |
 | **State Management** | 12 mutable `public static` fields | Immutable `TaxCalculationResult` |

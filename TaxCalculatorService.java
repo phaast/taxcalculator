@@ -1,5 +1,6 @@
 package com.bartoszwalter.students.taxes;
 
+import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -16,9 +17,9 @@ public class TaxCalculatorService {
         strategies.put(strategy.getContractType(), strategy);
     }
 
-    public TaxCalculationResult calculate(ContractType contractType, double grossIncome) {
-        if (grossIncome < 0) {
-            throw new IllegalArgumentException("Income cannot be negative: " + grossIncome);
+    public TaxCalculationResult calculate(ContractType contractType, BigDecimal grossIncome) {
+        if (grossIncome == null || grossIncome.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Income cannot be negative or null");
         }
 
         TaxStrategy strategy = strategies.get(contractType);

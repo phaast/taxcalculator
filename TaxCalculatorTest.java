@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 
 public class TaxCalculatorTest {
@@ -20,34 +21,34 @@ public class TaxCalculatorTest {
 
     private static void testDirectServiceCalculations() {
         TaxCalculatorService service = new TaxCalculatorService();
-        TaxCalculationResult resultE = service.calculate(ContractType.EMPLOYMENT, 1000.0);
+        TaxCalculationResult resultE = service.calculate(ContractType.EMPLOYMENT, new BigDecimal("1000.00"));
 
-        assertEquals(resultE.getGrossIncome(), 1000.0);
-        assertEquals(resultE.getPensionContribution(), 97.60);
-        assertEquals(resultE.getDisabilityContribution(), 15.00);
-        assertEquals(resultE.getSicknessContribution(), 24.50);
-        assertEquals(resultE.getTotalSocialSecurity(), 137.10);
-        assertEquals(resultE.getHealthContribution(), 90.00);
-        assertEquals(resultE.getTaxDeductibleHealthContribution(), 77.50);
-        assertEquals(resultE.getTaxDeductibleExpenses(), 111.25);
-        assertEquals(resultE.getTaxableBase(), 888.75);
-        assertEquals(resultE.getRoundedTaxableBase(), 889.0);
-        assertEquals(resultE.getAdvanceTax(), 160.02);
-        assertEquals(resultE.getTaxFreeAllowance(), 46.33);
-        assertEquals(resultE.getAdvanceTaxPaid(), 36.19);
-        assertEquals(resultE.getRoundedAdvanceTaxPaid(), 36.0);
-        assertEquals(resultE.getNetIncome(), 736.90);
+        assertEquals(resultE.getGrossIncome(), new BigDecimal("1000.00"));
+        assertEquals(resultE.getPensionContribution(), new BigDecimal("97.60"));
+        assertEquals(resultE.getDisabilityContribution(), new BigDecimal("15.00"));
+        assertEquals(resultE.getSicknessContribution(), new BigDecimal("24.50"));
+        assertEquals(resultE.getTotalSocialSecurity(), new BigDecimal("137.10"));
+        assertEquals(resultE.getHealthContribution(), new BigDecimal("90.00"));
+        assertEquals(resultE.getTaxDeductibleHealthContribution(), new BigDecimal("77.50"));
+        assertEquals(resultE.getTaxDeductibleExpenses(), new BigDecimal("111.25"));
+        assertEquals(resultE.getTaxableBase(), new BigDecimal("888.75"));
+        assertEquals(resultE.getRoundedTaxableBase(), new BigDecimal("889"));
+        assertEquals(resultE.getAdvanceTax(), new BigDecimal("160.02"));
+        assertEquals(resultE.getTaxFreeAllowance(), new BigDecimal("46.33"));
+        assertEquals(resultE.getAdvanceTaxPaid(), new BigDecimal("36.19"));
+        assertEquals(resultE.getRoundedAdvanceTaxPaid(), new BigDecimal("36"));
+        assertEquals(resultE.getNetIncome(), new BigDecimal("736.90"));
 
-        TaxCalculationResult resultC = service.calculate(ContractType.CIVIL, 1000.0);
-        assertEquals(resultC.getGrossIncome(), 1000.0);
-        assertEquals(resultC.getTaxDeductibleExpenses(), 200.0);
-        assertEquals(resultC.getTaxableBase(), 800.0);
-        assertEquals(resultC.getRoundedTaxableBase(), 800.0);
-        assertEquals(resultC.getAdvanceTax(), 144.0);
-        assertEquals(resultC.getTaxFreeAllowance(), 0.0);
-        assertEquals(resultC.getAdvanceTaxPaid(), 66.50);
-        assertEquals(resultC.getRoundedAdvanceTaxPaid(), 66.0);
-        assertEquals(resultC.getNetIncome(), 706.90);
+        TaxCalculationResult resultC = service.calculate(ContractType.CIVIL, new BigDecimal("1000.00"));
+        assertEquals(resultC.getGrossIncome(), new BigDecimal("1000.00"));
+        assertEquals(resultC.getTaxDeductibleExpenses(), new BigDecimal("200.00"));
+        assertEquals(resultC.getTaxableBase(), new BigDecimal("800.00"));
+        assertEquals(resultC.getRoundedTaxableBase(), new BigDecimal("800"));
+        assertEquals(resultC.getAdvanceTax(), new BigDecimal("144.00"));
+        assertEquals(resultC.getTaxFreeAllowance(), new BigDecimal("0.00"));
+        assertEquals(resultC.getAdvanceTaxPaid(), new BigDecimal("66.50"));
+        assertEquals(resultC.getRoundedAdvanceTaxPaid(), new BigDecimal("66"));
+        assertEquals(resultC.getNetIncome(), new BigDecimal("706.90"));
     }
 
     private static void testInvalidContractThrowsException() {
@@ -58,8 +59,8 @@ public class TaxCalculatorTest {
         }
     }
 
-    private static void assertEquals(double actual, double expected) {
-        if (Math.abs(actual - expected) > 0.001) {
+    private static void assertEquals(BigDecimal actual, BigDecimal expected) {
+        if (actual.compareTo(expected) != 0) {
             throw new AssertionError("Expected: " + expected + ", but got: " + actual);
         }
     }
@@ -67,7 +68,7 @@ public class TaxCalculatorTest {
     private static void testEmploymentContractWith1000() {
         String output = runWithInput("1000\nE\n");
         assertContains(output, "EMPLOYMENT");
-        assertContains(output, "Income 1000.0");
+        assertContains(output, "Income 1000");
         assertContains(output, "Social security tax 97");
         assertContains(output, "Health social security tax    15");
         assertContains(output, "Sickness social security tax  24");
@@ -83,7 +84,7 @@ public class TaxCalculatorTest {
     private static void testEmploymentContractWith5000() {
         String output = runWithInput("5000\nE\n");
         assertContains(output, "EMPLOYMENT");
-        assertContains(output, "Income 5000.0");
+        assertContains(output, "Income 5000");
         assertContains(output, "Social security tax 488");
         assertContains(output, "Tax deductible expenses 111.25");
         assertContains(output, "income 4888.75 rounded 4889");
@@ -95,11 +96,11 @@ public class TaxCalculatorTest {
 
     private static void testCivilContractWith1000() {
         String output = runWithInput("1000\nC\n");
-        assertContains(output, "income 1000.0");
+        assertContains(output, "income 1000");
         assertContains(output, "Social security tax = 97");
-        assertContains(output, "Tax deductible expenses = 200.0");
-        assertContains(output, "income to be taxed = 800.0 rounded = 800");
-        assertContains(output, "Advance tax 18 % = 144.0");
+        assertContains(output, "Tax deductible expenses = 200");
+        assertContains(output, "income to be taxed = 800");
+        assertContains(output, "Advance tax 18 % = 144");
         assertContains(output, "Already paid tax = 144");
         assertContains(output, "Advance tax  = 66");
         assertContains(output, "Net income = 706");
@@ -107,11 +108,11 @@ public class TaxCalculatorTest {
 
     private static void testCivilContractWith5000() {
         String output = runWithInput("5000\nC\n");
-        assertContains(output, "income 5000.0");
+        assertContains(output, "income 5000");
         assertContains(output, "Social security tax = 488");
-        assertContains(output, "Tax deductible expenses = 1000.0");
-        assertContains(output, "income to be taxed = 4000.0 rounded = 4000");
-        assertContains(output, "Advance tax 18 % = 720.0");
+        assertContains(output, "Tax deductible expenses = 1000");
+        assertContains(output, "income to be taxed = 4000");
+        assertContains(output, "Advance tax 18 % = 720");
         assertContains(output, "Already paid tax = 720");
         assertContains(output, "Advance tax  = 332");
         assertContains(output, "Net income = 3532");

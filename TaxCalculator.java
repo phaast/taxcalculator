@@ -3,6 +3,9 @@ package com.bartoszwalter.students.taxes;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
 public class TaxCalculator {
 
@@ -11,7 +14,7 @@ public class TaxCalculator {
             InputData input = readInput();
 
             TaxCalculatorService service = new TaxCalculatorService();
-            TaxCalculationResult result = service.calculate(input.contractType, input.income);
+            TaxCalculationResult result = service.calculate(input.getContractType(), input.getIncome());
 
             TaxReportPrinter printer = new TaxReportPrinter();
             printer.printReport(result);
@@ -26,22 +29,19 @@ public class TaxCalculator {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
         System.out.print("Enter income: ");
-        double incomeInput = Double.parseDouble(reader.readLine());
+        BigDecimal incomeInput = new BigDecimal(reader.readLine().trim());
 
         System.out.print("Contract Type: (E)mployment, (C)ivil: ");
-        char contractCode = reader.readLine().charAt(0);
+        char contractCode = reader.readLine().trim().charAt(0);
 
         ContractType type = ContractType.fromCode(contractCode);
         return new InputData(incomeInput, type);
     }
 
+    @Getter
+    @AllArgsConstructor
     private static class InputData {
-        final double income;
-        final ContractType contractType;
-
-        InputData(double income, ContractType contractType) {
-            this.income = income;
-            this.contractType = contractType;
-        }
+        private final BigDecimal income;
+        private final ContractType contractType;
     }
 }
