@@ -1,4 +1,4 @@
-package com.bartoszwalter.students.taxes;
+package com.bartoszwalter.students.taxes.model;
 
 import java.math.BigDecimal;
 

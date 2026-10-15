@@ -1,5 +1,10 @@
-package com.bartoszwalter.students.taxes;
+package com.bartoszwalter.students.taxes.service;
 
+import com.bartoszwalter.students.taxes.model.ContractType;
+import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
+import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
+import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
+import com.bartoszwalter.students.taxes.strategy.TaxStrategy;
 import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.Map;

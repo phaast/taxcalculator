@@ -1,5 +1,7 @@
-package com.bartoszwalter.students.taxes;
+package com.bartoszwalter.students.taxes.view;
 
+import com.bartoszwalter.students.taxes.model.ContractType;
+import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
 import java.io.PrintStream;
 import java.text.DecimalFormat;
 

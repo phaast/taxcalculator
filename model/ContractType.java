@@ -1,4 +1,4 @@
-package com.bartoszwalter.students.taxes;
+package com.bartoszwalter.students.taxes.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

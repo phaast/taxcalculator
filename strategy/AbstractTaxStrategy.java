@@ -1,5 +1,8 @@
-package com.bartoszwalter.students.taxes;
+package com.bartoszwalter.students.taxes.strategy;
 
+import com.bartoszwalter.students.taxes.model.ContractType;
+import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
+import com.bartoszwalter.students.taxes.model.TaxRates;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 

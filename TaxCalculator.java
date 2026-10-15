@@ -1,5 +1,9 @@
 package com.bartoszwalter.students.taxes;
 
+import com.bartoszwalter.students.taxes.model.ContractType;
+import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
+import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
+import com.bartoszwalter.students.taxes.view.TaxReportPrinter;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

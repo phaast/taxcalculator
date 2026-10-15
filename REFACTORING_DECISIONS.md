@@ -552,6 +552,57 @@ public static void main(String[] args) {
 
 ---
 
+### Decision 10: Modular Subpackage Architecture (High Cohesion & Low Coupling)
+
+#### Context & Problem
+Keeping all classes in a single flat directory mixes domain models, presentation views, business calculation strategies, and service dispatchers. As projects grow, flat directory structures hinder cognitive navigation, reduce modularity, and violate the principle of organizing code by responsibilities.
+
+#### Previous Code (Before)
+All classes located in a single flat directory:
+```
+SEM/
+├── ContractType.java
+├── TaxRates.java
+├── TaxCalculationResult.java
+├── TaxStrategy.java
+├── AbstractTaxStrategy.java
+├── EmploymentTaxStrategy.java
+├── CivilContractTaxStrategy.java
+├── TaxCalculatorService.java
+├── TaxReportPrinter.java
+└── TaxCalculator.java
+```
+
+#### New Modified Code (After)
+Code organized into focused, cohesive subpackages:
+```
+SEM/
+├── model/
+│   ├── ContractType.java
+│   ├── TaxCalculationResult.java
+│   └── TaxRates.java
+├── strategy/
+│   ├── TaxStrategy.java
+│   ├── AbstractTaxStrategy.java
+│   ├── EmploymentTaxStrategy.java
+│   └── CivilContractTaxStrategy.java
+├── service/
+│   └── TaxCalculatorService.java
+├── view/
+│   └── TaxReportPrinter.java
+├── lib/
+│   └── lombok.jar
+├── TaxCalculator.java
+├── TaxCalculatorTest.java
+└── REFACTORING_DECISIONS.md
+```
+
+#### Clean Code Principle & Rationale
+- **Package Cohesion & Modularity**: Grouping classes by architectural role (`model`, `strategy`, `service`, `view`) establishes clear architectural boundaries and makes the system intuitive to explore.
+- **Dependency Inversion & Encapsulation**: High-level modules depend on abstractions (`TaxStrategy`), and presentation concerns (`view`) are cleanly isolated from computation (`service`, `strategy`).
+
+---
+
 ## 4. Verification & Testing
 
 To ensure complete backward compatibility without regressions, a dual testing strategy was adopted:
@@ -561,7 +612,7 @@ To ensure complete backward compatibility without regressions, a dual testing st
 
 ### Test Execution:
 ```bash
-javac -cp "lib/lombok.jar" -processorpath "lib/lombok.jar" -d . *.java
+javac -cp "lib/lombok.jar" -processorpath "lib/lombok.jar" -d . model/*.java strategy/*.java service/*.java view/*.java TaxCalculator.java TaxCalculatorTest.java
 java -cp ".;lib/lombok.jar" com.bartoszwalter.students.taxes.TaxCalculatorTest
 ```
 **Result**: `ALL CHARACTERIZATION & UNIT TESTS PASSED SUCCESSFULLY!`
@@ -573,6 +624,7 @@ java -cp ".;lib/lombok.jar" com.bartoszwalter.students.taxes.TaxCalculatorTest
 | Quality Attribute | Original `TaxCalculator.java` | Refactored Architecture |
 |---|---|---|
 | **Lines in `main`** | 108 lines | 14 lines |
+| **Directory Structure** | Flat single-folder mess | Modular subpackages (`model`, `strategy`, `service`, `view`) |
 | **Numeric Type** | `double` (floating-point precision bugs) | `BigDecimal` (exact currency arithmetic) |
 | **Boilerplate Reduction** | 150+ lines of manual constructors & getters | Clean domain models with Lombok (`@Getter`, `@Builder`, `@AllArgsConstructor`) |
 | **Dead Code / Deprecated** | Cluttered with legacy static state | 0 deprecated fields/methods (pure dead code removal) |
@@ -583,3 +635,4 @@ java -cp ".;lib/lombok.jar" com.bartoszwalter.students.taxes.TaxCalculatorTest
 | **Separation of Concerns** | Mixed I/O, math, and presentation | Dedicated layers (Domain, Service, View) |
 | **Testability** | Required hijacking `System.in`/`System.out` | Directly unit testable pure functions |
 | **SOLID Principles** | Violated SRP, OCP, DRY | Adheres to SRP, OCP, LSP, ISP, DIP |
+
