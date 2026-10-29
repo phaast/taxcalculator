@@ -1,10 +1,13 @@
 package com.bartoszwalter.students.taxes;
 
 import com.bartoszwalter.students.taxes.model.ContractType;
+import com.bartoszwalter.students.taxes.model.ContractTypeRegistry;
 import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
 import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
 import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
 import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
+import com.bartoszwalter.students.taxes.view.CivilContractReportPrinter;
+import com.bartoszwalter.students.taxes.view.EmploymentReportPrinter;
 import com.bartoszwalter.students.taxes.view.TaxReportPrinter;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -22,8 +25,7 @@ public class TaxCalculator {
 
             TaxCalculationResult result = createCalculatorService().calculate(input.getContractType(), input.getIncome());
 
-            TaxReportPrinter printer = new TaxReportPrinter();
-            printer.printReport(result);
+            createReportPrinters().get(result.getContractType()).print(result);
 
         } catch (Exception ex) {
             System.out.println("Incorrect");
@@ -35,6 +37,12 @@ public class TaxCalculator {
         return new TaxCalculatorService(List.of(
                 new EmploymentTaxStrategy(),
                 new CivilContractTaxStrategy()));
+    }
+
+    private static ContractTypeRegistry<TaxReportPrinter> createReportPrinters() {
+        return new ContractTypeRegistry<>(List.of(
+                new EmploymentReportPrinter(System.out),
+                new CivilContractReportPrinter(System.out)));
     }
 
     private static InputData readInput() throws IOException {
