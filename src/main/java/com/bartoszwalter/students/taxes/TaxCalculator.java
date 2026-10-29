@@ -4,12 +4,13 @@ import com.bartoszwalter.students.taxes.input.ConsoleTaxInputReader;
 import com.bartoszwalter.students.taxes.model.ContractTypeRegistry;
 import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
 import com.bartoszwalter.students.taxes.model.TaxInput;
+import com.bartoszwalter.students.taxes.output.ConsoleReportWriter;
 import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
 import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
 import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
-import com.bartoszwalter.students.taxes.view.CivilContractReportPrinter;
-import com.bartoszwalter.students.taxes.view.EmploymentReportPrinter;
-import com.bartoszwalter.students.taxes.view.TaxReportPrinter;
+import com.bartoszwalter.students.taxes.view.CivilContractReportGenerator;
+import com.bartoszwalter.students.taxes.view.EmploymentReportGenerator;
+import com.bartoszwalter.students.taxes.view.TaxReportGenerator;
 import java.util.List;
 
 public class TaxCalculator {
@@ -20,7 +21,7 @@ public class TaxCalculator {
 
             TaxCalculationResult result = createCalculatorService().calculate(input.getContractType(), input.getIncome());
 
-            createReportPrinters().get(result.getContractType()).print(result);
+            new ConsoleReportWriter(System.out).write(createReportGenerators().get(result.getContractType()).generate(result));
 
         } catch (Exception ex) {
             System.out.println("Incorrect");
@@ -34,9 +35,9 @@ public class TaxCalculator {
                 new CivilContractTaxStrategy()));
     }
 
-    private static ContractTypeRegistry<TaxReportPrinter> createReportPrinters() {
+    private static ContractTypeRegistry<TaxReportGenerator> createReportGenerators() {
         return new ContractTypeRegistry<>(List.of(
-                new EmploymentReportPrinter(System.out),
-                new CivilContractReportPrinter(System.out)));
+                new EmploymentReportGenerator(),
+                new CivilContractReportGenerator()));
     }
 }

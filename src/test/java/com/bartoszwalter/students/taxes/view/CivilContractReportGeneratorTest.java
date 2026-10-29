@@ -4,23 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bartoszwalter.students.taxes.model.ContractType;
 import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class CivilContractReportPrinterTest {
+class CivilContractReportGeneratorTest {
 
-    private final ByteArrayOutputStream output = new ByteArrayOutputStream();
-    private final TaxReportPrinter printer =
-            new CivilContractReportPrinter(new PrintStream(output, true, StandardCharsets.UTF_8));
+    private final TaxReportGenerator generator = new CivilContractReportGenerator();
 
     @Test
-    void printsCivilContractReport() {
-        printer.print(civilContractResult());
-
-        assertThat(output.toString(StandardCharsets.UTF_8).lines()).containsExactly(
+    void generatesCivilContractReport() {
+        assertThat(generator.generate(civilContractResult()).getLines()).containsExactly(
                 "income 1000.00",
                 "Social security tax = 97.60",
                 "Disability social security tax = 15.00",
@@ -38,7 +31,7 @@ class CivilContractReportPrinterTest {
 
     @Test
     void handlesCivilContractType() {
-        assertThat(printer.getContractType()).isEqualTo(ContractType.CIVIL);
+        assertThat(generator.getContractType()).isEqualTo(ContractType.CIVIL);
     }
 
     private static TaxCalculationResult civilContractResult() {
