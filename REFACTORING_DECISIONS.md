@@ -32,9 +32,30 @@ The refactored solution separates concerns into clean, modular layers following 
 classDiagram
     class TaxCalculator {
         +main(args: String[])
+        -createApplication() TaxCalculatorApplication
         -createCalculatorService() TaxCalculatorService
-        -createReportPrinters() ContractTypeRegistry~TaxReportPrinter~
-        -readInput() InputData
+        -createReportGenerators() ContractTypeRegistry~TaxReportGenerator~
+    }
+
+    class TaxCalculatorApplication {
+        -inputReader: TaxInputReader
+        -calculatorService: TaxCalculatorService
+        -reportGenerators: ContractTypeRegistry~TaxReportGenerator~
+        -reportWriter: ReportWriter
+        +run()
+    }
+
+    class TaxInputReader {
+        <<interface>>
+        +read() TaxInput
+    }
+
+    class ConsoleTaxInputReader
+
+    class TaxInput {
+        <<lombok>>
+        +income: BigDecimal
+        +contractType: ContractType
     }
 
     class ContractType {
@@ -69,8 +90,6 @@ classDiagram
         +calculate(income: BigDecimal) TaxCalculationResult
         #calculateTaxDeductibleExpenses(incomeAfterSocialSecurity: BigDecimal)* BigDecimal
         #getTaxFreeAllowance()* BigDecimal
-        #applyRate(amount: BigDecimal, rate: BigDecimal) BigDecimal
-        #roundToWhole(amount: BigDecimal) BigDecimal
     }
 
     class EmploymentTaxStrategy
@@ -84,37 +103,52 @@ classDiagram
         <<immutable, lombok>>
     }
 
-    class TaxReportPrinter {
+    class TaxReportGenerator {
         <<interface>>
-        +print(result: TaxCalculationResult)
+        +generate(result: TaxCalculationResult) TaxReport
     }
 
-    class EmploymentReportPrinter
-    class CivilContractReportPrinter
+    class EmploymentReportGenerator
+    class CivilContractReportGenerator
+
+    class TaxReport {
+        +lines: List~String~
+    }
 
     class ReportValueFormatter {
         <<utility>>
-        +formatAmount(amount: BigDecimal) String
-        +formatWholeAmount(amount: BigDecimal) String
-        +formatRate(rate: BigDecimal) String
     }
 
-    TaxCalculator --> TaxCalculatorService
-    TaxCalculator --> ContractTypeRegistry
+    class ReportWriter {
+        <<interface>>
+        +write(report: TaxReport)
+    }
+
+    class ConsoleReportWriter
+
+    TaxCalculator --> TaxCalculatorApplication
+    TaxCalculatorApplication --> TaxInputReader
+    TaxCalculatorApplication --> TaxCalculatorService
+    TaxCalculatorApplication --> ContractTypeRegistry
+    TaxCalculatorApplication --> ReportWriter
+    ConsoleTaxInputReader ..|> TaxInputReader
+    TaxInputReader ..> TaxInput
     TaxCalculatorService --> ContractTypeRegistry
     ContractTypeRegistry o-- ContractTypeAware
     TaxStrategy --|> ContractTypeAware
-    TaxReportPrinter --|> ContractTypeAware
+    TaxReportGenerator --|> ContractTypeAware
     AbstractTaxStrategy ..|> TaxStrategy
     EmploymentTaxStrategy --|> AbstractTaxStrategy
     CivilContractTaxStrategy --|> AbstractTaxStrategy
     AbstractTaxStrategy ..> TaxRates
     AbstractTaxStrategy ..> TaxCalculationResult
-    EmploymentReportPrinter ..|> TaxReportPrinter
-    CivilContractReportPrinter ..|> TaxReportPrinter
-    EmploymentReportPrinter ..> ReportValueFormatter
-    CivilContractReportPrinter ..> ReportValueFormatter
-    TaxReportPrinter ..> TaxCalculationResult
+    EmploymentReportGenerator ..|> TaxReportGenerator
+    CivilContractReportGenerator ..|> TaxReportGenerator
+    EmploymentReportGenerator ..> ReportValueFormatter
+    CivilContractReportGenerator ..> ReportValueFormatter
+    TaxReportGenerator ..> TaxReport
+    ConsoleReportWriter ..|> ReportWriter
+    ReportWriter ..> TaxReport
 ```
 
 ---
@@ -999,18 +1033,259 @@ protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAf
 
 ---
 
+### Iteration 3 — Pluggable Input and Output
+
+The user decided that both where the data comes from and where the report goes must be replaceable — the console is only today's choice; a file, a GUI or a web endpoint may follow. This revises the iteration 2 entry "Dedicated CLI / input-reader layer — Rejected": input is now abstracted, while the error handling in `main` stays as it was.
+
+---
+
+### Decision 16: Input Source Behind the `TaxInputReader` Abstraction
+
+#### Context & Problem
+`TaxCalculator.readInput()` read directly from `System.in` and wrote prompts directly to `System.out`. Reading income and contract type from any other source (file, GUI form, program arguments, HTTP request) meant rewriting `main`. The input value object `InputData` was a private nested class, invisible to anything but `main`.
+
+#### Previous Code (Before)
+```java
+private static InputData readInput() throws IOException {
+    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+
+    System.out.print("Enter income: ");
+    BigDecimal incomeInput = new BigDecimal(reader.readLine().trim());
+
+    System.out.print("Contract Type: (E)mployment, (C)ivil: ");
+    char contractCode = reader.readLine().trim().charAt(0);
+
+    ContractType type = ContractType.fromCode(contractCode);
+    return new InputData(incomeInput, type);
+}
+
+@Getter
+@AllArgsConstructor
+private static class InputData {
+    private final BigDecimal income;
+    private final ContractType contractType;
+}
+```
+
+#### New Modified Code (After)
+```java
+@Getter
+@AllArgsConstructor
+public class TaxInput {
+
+    private final BigDecimal income;
+    private final ContractType contractType;
+}
+
+public interface TaxInputReader {
+
+    TaxInput read();
+}
+
+public class ConsoleTaxInputReader implements TaxInputReader {
+
+    private final BufferedReader reader;
+    private final PrintStream promptOutput;
+
+    public ConsoleTaxInputReader(InputStream input, PrintStream promptOutput) {
+        this.reader = new BufferedReader(new InputStreamReader(input));
+        this.promptOutput = promptOutput;
+    }
+
+    @Override
+    public TaxInput read() {
+        promptOutput.print("Enter income: ");
+        BigDecimal income = new BigDecimal(readLine());
+
+        promptOutput.print("Contract Type: (E)mployment, (C)ivil: ");
+        ContractType contractType = ContractType.fromCode(readLine().charAt(0));
+
+        return new TaxInput(income, contractType);
+    }
+
+    private String readLine() {
+        try {
+            return reader.readLine().trim();
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        }
+    }
+}
+```
+
+#### Clean Code Principle & Rationale
+- **Dependency Inversion / Open-Closed**: the application depends on `TaxInputReader`; a new source is one new implementation, nothing else changes.
+- **Clean Code Ch. 8 (Boundaries)**: the console is a boundary; its details (`BufferedReader`, prompts, `IOException`) are kept in one adapter class.
+- **Interface free of a specific technology**: `read()` declares no `IOException`, because sources such as program arguments or a GUI form do not perform stream I/O; the console adapter wraps it in `UncheckedIOException`.
+- **Testability**: the console reader is tested with in-memory streams; the rest of the application is tested with a lambda `() -> input`.
+
+---
+
+### Decision 17: Report Content Separated from Output Destination
+
+#### Context & Problem
+After Decision 14 every printer both decided **what** the report contains and **where** it goes (`PrintStream`). Sending the same report to a file, a GUI or an HTTP response would have required duplicating every printer per destination — M contract types × N destinations.
+
+#### Previous Code (Before)
+```java
+public interface TaxReportPrinter extends ContractTypeAware {
+
+    void print(TaxCalculationResult result);
+}
+
+@RequiredArgsConstructor
+public class EmploymentReportPrinter implements TaxReportPrinter {
+
+    private final PrintStream out;
+
+    @Override
+    public void print(TaxCalculationResult result) {
+        out.println("EMPLOYMENT");
+        out.println("Income " + formatAmount(result.getGrossIncome()));
+        ...
+    }
+}
+```
+
+#### New Modified Code (After)
+Report generators (one per contract type) build the content:
+```java
+@Getter
+public class TaxReport {
+
+    private final List<String> lines;
+
+    public TaxReport(List<String> lines) {
+        this.lines = List.copyOf(lines);
+    }
+}
+
+public interface TaxReportGenerator extends ContractTypeAware {
+
+    TaxReport generate(TaxCalculationResult result);
+}
+
+public class EmploymentReportGenerator implements TaxReportGenerator {
+
+    @Override
+    public TaxReport generate(TaxCalculationResult result) {
+        return new TaxReport(List.of(
+                "EMPLOYMENT",
+                "Income " + formatAmount(result.getGrossIncome()),
+                ...
+                "Net income = " + formatAmount(result.getNetIncome())));
+    }
+}
+```
+Report writers (one per destination) deliver it:
+```java
+public interface ReportWriter {
+
+    void write(TaxReport report);
+}
+
+@RequiredArgsConstructor
+public class ConsoleReportWriter implements ReportWriter {
+
+    private final PrintStream out;
+
+    @Override
+    public void write(TaxReport report) {
+        report.getLines().forEach(out::println);
+    }
+}
+```
+Classes were renamed with `git mv` (`*ReportPrinter` → `*ReportGenerator`) to keep history.
+
+#### Clean Code Principle & Rationale
+- **Single Responsibility Principle**: a generator changes when the report layout of its contract changes; a writer changes when the destination changes. Before, both reasons met in one class.
+- **M + N instead of M × N**: a new contract type adds one generator, a new destination adds one writer.
+- **Immutability**: `TaxReport` copies its lines (`List.copyOf`), so a writer cannot modify a generated report.
+- **Pure, stream-free tests**: generators are verified directly on `getLines()`; only `ConsoleReportWriterTest` uses a stream.
+
+---
+
+### Decision 18: Application Flow in `TaxCalculatorApplication`, `main` as Composition Root
+
+#### Context & Problem
+`main` mixed two roles: choosing concrete implementations (console, strategies, printers) and running the flow read → calculate → report. Testing the flow required redirecting `System.in` and `System.out`.
+
+#### Previous Code (Before)
+```java
+public static void main(String[] args) {
+    try {
+        InputData input = readInput();
+
+        TaxCalculationResult result = createCalculatorService().calculate(input.getContractType(), input.getIncome());
+
+        createReportPrinters().get(result.getContractType()).print(result);
+
+    } catch (Exception ex) {
+        System.out.println("Incorrect");
+        System.err.println(ex);
+    }
+}
+```
+
+#### New Modified Code (After)
+```java
+@RequiredArgsConstructor
+public class TaxCalculatorApplication {
+
+    private final TaxInputReader inputReader;
+    private final TaxCalculatorService calculatorService;
+    private final ContractTypeRegistry<TaxReportGenerator> reportGenerators;
+    private final ReportWriter reportWriter;
+
+    public void run() {
+        TaxInput input = inputReader.read();
+
+        TaxCalculationResult result = calculatorService.calculate(input.getContractType(), input.getIncome());
+
+        reportWriter.write(reportGenerators.get(result.getContractType()).generate(result));
+    }
+}
+
+public static void main(String[] args) {
+    try {
+        createApplication().run();
+    } catch (Exception ex) {
+        System.out.println("Incorrect");
+        System.err.println(ex);
+    }
+}
+
+private static TaxCalculatorApplication createApplication() {
+    return new TaxCalculatorApplication(
+            new ConsoleTaxInputReader(System.in, System.out),
+            createCalculatorService(),
+            createReportGenerators(),
+            new ConsoleReportWriter(System.out));
+}
+```
+Switching to another input or output means changing only `createApplication()`.
+
+#### Clean Code Principle & Rationale
+- **Clean Code Ch. 11 (Separation of Main)**: `main` only builds the object graph and handles the top-level error; the application does not know it runs in a console.
+- **Dependency Inversion**: `TaxCalculatorApplication` depends only on abstractions (`TaxInputReader`, `ReportWriter`, `TaxReportGenerator`) and on the service.
+- **Testability**: `TaxCalculatorApplicationTest` runs the whole flow with a lambda as input and `writtenReports::add` as writer — no global stream redirection. `TaxCalculatorTest` remains the only end-to-end test of the console wiring.
+- **Error handling unchanged**: as decided in iteration 2, `main` still prints `Incorrect` for any failure.
+
+---
+
 ## 4. Verification & Testing
 
 The test suite uses JUnit 5 and AssertJ and runs with a single Maven command:
 
-1. **Unit tests per class**: `ContractTypeTest`, `ContractTypeRegistryTest`, `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`, `TaxCalculatorServiceTest`, `ReportValueFormatterTest`, `EmploymentReportPrinterTest`, `CivilContractReportPrinterTest`.
-2. **End-to-end test** `TaxCalculatorTest`: runs `main` with redirected standard streams for both contract types and for invalid input.
+1. **Unit tests per class**: `ContractTypeTest`, `ContractTypeRegistryTest`, `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`, `TaxCalculatorServiceTest`, `ReportValueFormatterTest`, `EmploymentReportGeneratorTest`, `CivilContractReportGeneratorTest`, `ConsoleTaxInputReaderTest`, `ConsoleReportWriterTest`.
+2. **Application flow test** `TaxCalculatorApplicationTest`: whole flow with in-memory input and output.
+3. **End-to-end test** `TaxCalculatorTest`: runs `main` with redirected standard streams for both contract types and for invalid input.
 
 ### Test Execution:
 ```bash
 mvn test
 ```
-**Result**: `Tests run: 51, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`
+**Result**: `Tests run: 59, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`
 
 ### Running the Application:
 ```bash
@@ -1024,17 +1299,18 @@ java -cp target/classes com.bartoszwalter.students.taxes.TaxCalculator
 
 | Quality Attribute | Original `TaxCalculator.java` | Refactored Architecture |
 |---|---|---|
-| **Lines in `main`** | 108 lines | 13 lines (object graph built by two factory methods) |
+| **Lines in `main`** | 108 lines | 8 lines; object graph built in `createApplication()` |
 | **Build** | None — manual `javac`, committed `lombok.jar` | Maven, one command (`mvn test`), declared dependencies |
-| **Directory Structure** | Flat single-folder mess | Standard Maven layout; packages `model`, `strategy`, `service`, `view` match directories |
+| **Directory Structure** | Flat single-folder mess | Standard Maven layout; packages `model`, `strategy`, `service`, `view`, `input`, `output` match directories |
 | **Numeric Type** | `double` (floating-point precision bugs) | `BigDecimal`, `HALF_UP` rounding per *Ordynacja podatkowa* art. 63 |
 | **Domain Correctness** | Health base and civil expenses from gross income, negative tax possible | Polish rules: base after social security contributions, non-negative tax base and tax |
 | **Boilerplate Reduction** | 150+ lines of manual constructors & getters | Clean domain models with Lombok (`@Getter`, `@Builder`, `@AllArgsConstructor`, `@RequiredArgsConstructor`) |
 | **Dead Code / Deprecated** | Cluttered with legacy static state | 0 deprecated fields/methods, no unreachable branches |
 | **Comments** | Confusing/misleading comments | 0 comments (100% self-documenting code) |
-| **State Management** | 12 mutable `public static` fields | Immutable result; services and printers immutable after construction |
+| **State Management** | 12 mutable `public static` fields | Immutable result and report; all components immutable after construction |
 | **Magic Numbers** | Scattered throughout formulas and labels | Centralized in `TaxRates`, reused by report labels |
-| **Contract Extensibility** | Requires editing nested `if-else` | New enum constant + `TaxStrategy` + `TaxReportPrinter`, registered in `main` |
-| **Separation of Concerns** | Mixed I/O, math, and presentation | Domain, Service, View; one printer per contract scenario |
-| **Testability** | Required hijacking `System.in`/`System.out` | 51 JUnit 5 tests; classes tested in isolation, one end-to-end test |
-| **SOLID Principles** | Violated SRP, OCP, DRY | SRP, OCP, LSP, ISP, DIP (strategies and printers injected) |
+| **Contract Extensibility** | Requires editing nested `if-else` | New enum constant + `TaxStrategy` + `TaxReportGenerator`, registered in `main` |
+| **Input / Output** | Hard-wired `System.in` / `System.out` | `TaxInputReader` and `ReportWriter` abstractions; console is one replaceable implementation |
+| **Separation of Concerns** | Mixed I/O, math, and presentation | Input, Domain, Service, Report content, Output destination; flow in `TaxCalculatorApplication` |
+| **Testability** | Required hijacking `System.in`/`System.out` | 59 JUnit 5 tests; flow tested with in-memory input/output, one end-to-end test |
+| **SOLID Principles** | Violated SRP, OCP, DRY | SRP, OCP, LSP, ISP, DIP (all collaborators injected) |
