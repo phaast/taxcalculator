@@ -12,7 +12,7 @@ public class EmploymentTaxStrategy extends AbstractTaxStrategy {
     }
 
     @Override
-    protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal grossIncome) {
+    protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity) {
         return TaxRates.STANDARD_EMPLOYMENT_EXPENSES;
     }
 

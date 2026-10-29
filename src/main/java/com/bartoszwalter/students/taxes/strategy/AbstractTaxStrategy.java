@@ -1,6 +1,5 @@
 package com.bartoszwalter.students.taxes.strategy;
 
-import com.bartoszwalter.students.taxes.model.ContractType;
 import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
 import com.bartoszwalter.students.taxes.model.TaxRates;
 import java.math.BigDecimal;
@@ -10,31 +9,31 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
 
     private static final int CURRENCY_SCALE = 2;
     private static final int INTEGER_SCALE = 0;
-    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_EVEN;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
     @Override
     public TaxCalculationResult calculate(BigDecimal grossIncome) {
         BigDecimal pensionContribution = applyRate(grossIncome, TaxRates.PENSION_CONTRIBUTION_RATE);
         BigDecimal disabilityContribution = applyRate(grossIncome, TaxRates.DISABILITY_CONTRIBUTION_RATE);
         BigDecimal sicknessContribution = applyRate(grossIncome, TaxRates.SICKNESS_CONTRIBUTION_RATE);
+        BigDecimal totalSocialSecurity = pensionContribution.add(disabilityContribution).add(sicknessContribution);
 
-        BigDecimal healthContributionBase = grossIncome;
-        BigDecimal healthContribution = applyRate(healthContributionBase, TaxRates.HEALTH_CONTRIBUTION_RATE);
-        BigDecimal taxDeductibleHealthContribution = applyRate(healthContributionBase, TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE);
+        BigDecimal incomeAfterSocialSecurity = grossIncome.subtract(totalSocialSecurity);
+        BigDecimal healthContribution = applyRate(incomeAfterSocialSecurity, TaxRates.HEALTH_CONTRIBUTION_RATE);
+        BigDecimal taxDeductibleHealthContribution = applyRate(incomeAfterSocialSecurity, TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE);
 
-        BigDecimal taxDeductibleExpenses = calculateTaxDeductibleExpenses(grossIncome);
-        BigDecimal taxableBase = grossIncome.subtract(taxDeductibleExpenses);
+        BigDecimal taxDeductibleExpenses = calculateTaxDeductibleExpenses(incomeAfterSocialSecurity);
+        BigDecimal taxableBase = nonNegative(incomeAfterSocialSecurity.subtract(taxDeductibleExpenses));
         BigDecimal roundedTaxableBase = roundToWhole(taxableBase);
 
         BigDecimal advanceTax = applyRate(roundedTaxableBase, TaxRates.ADVANCE_TAX_RATE);
         BigDecimal taxFreeAllowance = getTaxFreeAllowance();
-        BigDecimal reducedTax = advanceTax.subtract(taxFreeAllowance);
+        BigDecimal reducedTax = nonNegative(advanceTax.subtract(taxFreeAllowance));
 
-        BigDecimal advanceTaxPaid = advanceTax.subtract(taxDeductibleHealthContribution).subtract(taxFreeAllowance);
+        BigDecimal advanceTaxPaid = nonNegative(reducedTax.subtract(taxDeductibleHealthContribution));
         BigDecimal roundedAdvanceTaxPaid = roundToWhole(advanceTaxPaid);
 
-        BigDecimal totalSocialSecurity = pensionContribution.add(disabilityContribution).add(sicknessContribution);
-        BigDecimal netIncome = grossIncome.subtract(totalSocialSecurity.add(healthContribution).add(roundedAdvanceTaxPaid));
+        BigDecimal netIncome = incomeAfterSocialSecurity.subtract(healthContribution).subtract(roundedAdvanceTaxPaid);
 
         return TaxCalculationResult.builder()
                 .contractType(getContractType())
@@ -43,7 +42,7 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
                 .disabilityContribution(disabilityContribution)
                 .sicknessContribution(sicknessContribution)
                 .totalSocialSecurity(totalSocialSecurity)
-                .healthContributionBase(healthContributionBase)
+                .healthContributionBase(incomeAfterSocialSecurity)
                 .healthContribution(healthContribution)
                 .taxDeductibleHealthContribution(taxDeductibleHealthContribution)
                 .taxDeductibleExpenses(taxDeductibleExpenses)
@@ -58,7 +57,7 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
                 .build();
     }
 
-    protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal grossIncome);
+    protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity);
 
     protected abstract BigDecimal getTaxFreeAllowance();
 
@@ -68,5 +67,9 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
 
     protected BigDecimal roundToWhole(BigDecimal amount) {
         return amount.setScale(INTEGER_SCALE, ROUNDING_MODE);
+    }
+
+    private BigDecimal nonNegative(BigDecimal amount) {
+        return amount.max(BigDecimal.ZERO);
     }
 }
