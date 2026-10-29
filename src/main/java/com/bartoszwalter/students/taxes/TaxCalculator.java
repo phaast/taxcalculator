@@ -2,8 +2,6 @@ package com.bartoszwalter.students.taxes;
 
 import com.bartoszwalter.students.taxes.input.ConsoleTaxInputReader;
 import com.bartoszwalter.students.taxes.model.ContractTypeRegistry;
-import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
-import com.bartoszwalter.students.taxes.model.TaxInput;
 import com.bartoszwalter.students.taxes.output.ConsoleReportWriter;
 import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
 import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
@@ -17,16 +15,19 @@ public class TaxCalculator {
 
     public static void main(String[] args) {
         try {
-            TaxInput input = new ConsoleTaxInputReader(System.in, System.out).read();
-
-            TaxCalculationResult result = createCalculatorService().calculate(input.getContractType(), input.getIncome());
-
-            new ConsoleReportWriter(System.out).write(createReportGenerators().get(result.getContractType()).generate(result));
-
+            createApplication().run();
         } catch (Exception ex) {
             System.out.println("Incorrect");
             System.err.println(ex);
         }
+    }
+
+    private static TaxCalculatorApplication createApplication() {
+        return new TaxCalculatorApplication(
+                new ConsoleTaxInputReader(System.in, System.out),
+                createCalculatorService(),
+                createReportGenerators(),
+                new ConsoleReportWriter(System.out));
     }
 
     private static TaxCalculatorService createCalculatorService() {
