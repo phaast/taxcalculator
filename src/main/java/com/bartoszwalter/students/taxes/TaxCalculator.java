@@ -3,11 +3,14 @@ package com.bartoszwalter.students.taxes;
 import com.bartoszwalter.students.taxes.model.ContractType;
 import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
 import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
+import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
+import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
 import com.bartoszwalter.students.taxes.view.TaxReportPrinter;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -17,8 +20,7 @@ public class TaxCalculator {
         try {
             InputData input = readInput();
 
-            TaxCalculatorService service = new TaxCalculatorService();
-            TaxCalculationResult result = service.calculate(input.getContractType(), input.getIncome());
+            TaxCalculationResult result = createCalculatorService().calculate(input.getContractType(), input.getIncome());
 
             TaxReportPrinter printer = new TaxReportPrinter();
             printer.printReport(result);
@@ -27,6 +29,12 @@ public class TaxCalculator {
             System.out.println("Incorrect");
             System.err.println(ex);
         }
+    }
+
+    private static TaxCalculatorService createCalculatorService() {
+        return new TaxCalculatorService(List.of(
+                new EmploymentTaxStrategy(),
+                new CivilContractTaxStrategy()));
     }
 
     private static InputData readInput() throws IOException {
