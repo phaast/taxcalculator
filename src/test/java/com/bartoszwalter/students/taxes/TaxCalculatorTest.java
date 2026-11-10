@@ -22,15 +22,15 @@ class TaxCalculatorTest {
         List<String> output = runWithInput("1000\nE\n").lines().toList();
 
         assertThat(output).first().isEqualTo(PROMPTS + "EMPLOYMENT");
-        assertThat(output).last().isEqualTo("Net income = 763.24");
+        assertThat(output).last().isEqualTo("Net income: 763.24");
     }
 
     @Test
     void printsCivilContractReportForCivilContract() {
         List<String> output = runWithInput("1000\nc\n").lines().toList();
 
-        assertThat(output).first().isEqualTo(PROMPTS + "income 1000.00");
-        assertThat(output).last().isEqualTo("Net income = 728.24");
+        assertThat(output).first().isEqualTo(PROMPTS + "CIVIL");
+        assertThat(output).last().isEqualTo("Net income: 728.24");
     }
 
     @ParameterizedTest

@@ -1,4 +1,4 @@
-package com.bartoszwalter.students.taxes.view;
+package com.bartoszwalter.students.taxes.output;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

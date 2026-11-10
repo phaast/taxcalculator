@@ -1,8 +1,8 @@
-package com.bartoszwalter.students.taxes.view;
+package com.bartoszwalter.students.taxes.output;
 
-import static com.bartoszwalter.students.taxes.view.ReportValueFormatter.formatAmount;
-import static com.bartoszwalter.students.taxes.view.ReportValueFormatter.formatRate;
-import static com.bartoszwalter.students.taxes.view.ReportValueFormatter.formatWholeAmount;
+import static com.bartoszwalter.students.taxes.output.ReportValueFormatter.formatAmount;
+import static com.bartoszwalter.students.taxes.output.ReportValueFormatter.formatRate;
+import static com.bartoszwalter.students.taxes.output.ReportValueFormatter.formatWholeAmount;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;

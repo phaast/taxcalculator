@@ -1,6 +1,6 @@
 package com.bartoszwalter.students.taxes.output;
 
-import com.bartoszwalter.students.taxes.view.TaxReport;
+import com.bartoszwalter.students.taxes.report.TaxReport;
 
 public interface ReportWriter {
 
