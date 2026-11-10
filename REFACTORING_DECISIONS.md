@@ -34,13 +34,11 @@ classDiagram
         +main(args: String[])
         -createApplication() TaxCalculatorApplication
         -createCalculatorService() TaxCalculatorService
-        -createReportGenerators() ContractTypeRegistry~TaxReportGenerator~
     }
 
     class TaxCalculatorApplication {
         -inputReader: TaxInputReader
         -calculatorService: TaxCalculatorService
-        -reportGenerators: ContractTypeRegistry~TaxReportGenerator~
         -reportWriter: ReportWriter
         +run()
     }
@@ -101,22 +99,28 @@ classDiagram
 
     class TaxCalculationResult {
         <<immutable, lombok>>
+        +toReport() TaxReport
     }
-
-    class TaxReportGenerator {
-        <<interface>>
-        +generate(result: TaxCalculationResult) TaxReport
-    }
-
-    class EmploymentReportGenerator
-    class CivilContractReportGenerator
 
     class TaxReport {
-        +lines: List~String~
+        +title: String
+        +entries: List~ReportEntry~
     }
 
-    class ReportValueFormatter {
-        <<utility>>
+    class ReportEntry {
+        +label: String
+        +value: BigDecimal
+        +format: ValueFormat
+        +amount(label, value)$ ReportEntry
+        +wholeAmount(label, value)$ ReportEntry
+        +rate(label, value)$ ReportEntry
+    }
+
+    class ValueFormat {
+        <<enum>>
+        AMOUNT
+        WHOLE_AMOUNT
+        RATE
     }
 
     class ReportWriter {
@@ -126,28 +130,29 @@ classDiagram
 
     class ConsoleReportWriter
 
+    class ReportValueFormatter {
+        <<utility>>
+    }
+
     TaxCalculator --> TaxCalculatorApplication
     TaxCalculatorApplication --> TaxInputReader
     TaxCalculatorApplication --> TaxCalculatorService
-    TaxCalculatorApplication --> ContractTypeRegistry
     TaxCalculatorApplication --> ReportWriter
     ConsoleTaxInputReader ..|> TaxInputReader
     TaxInputReader ..> TaxInput
     TaxCalculatorService --> ContractTypeRegistry
     ContractTypeRegistry o-- ContractTypeAware
     TaxStrategy --|> ContractTypeAware
-    TaxReportGenerator --|> ContractTypeAware
     AbstractTaxStrategy ..|> TaxStrategy
     EmploymentTaxStrategy --|> AbstractTaxStrategy
     CivilContractTaxStrategy --|> AbstractTaxStrategy
     AbstractTaxStrategy ..> TaxRates
     AbstractTaxStrategy ..> TaxCalculationResult
-    EmploymentReportGenerator ..|> TaxReportGenerator
-    CivilContractReportGenerator ..|> TaxReportGenerator
-    EmploymentReportGenerator ..> ReportValueFormatter
-    CivilContractReportGenerator ..> ReportValueFormatter
-    TaxReportGenerator ..> TaxReport
+    TaxCalculationResult ..> TaxReport
+    TaxReport o-- ReportEntry
+    ReportEntry --> ValueFormat
     ConsoleReportWriter ..|> ReportWriter
+    ConsoleReportWriter ..> ReportValueFormatter
     ReportWriter ..> TaxReport
 ```
 
@@ -1231,7 +1236,7 @@ public static void main(String[] args) {
 ```java
 @RequiredArgsConstructor
 public class TaxCalculatorApplication {
-
+w
     private final TaxInputReader inputReader;
     private final TaxCalculatorService calculatorService;
     private final ContractTypeRegistry<TaxReportGenerator> reportGenerators;
@@ -1273,11 +1278,148 @@ Switching to another input or output means changing only `createApplication()`.
 
 ---
 
+### Iteration 4 — The Report Drives the Output
+
+The user decided that output must not be dedicated to each contract type. Every calculation produces a report, and the report alone determines what the output renders. This supersedes the per-contract printers of Decision 14 and the per-contract report generators of Decision 17.
+
+---
+
+### Decision 19: Structured `TaxReport` Produced by the Calculation, One Generic Renderer
+
+#### Context & Problem
+After Decision 17 every contract type still had its own `TaxReportGenerator` with hand-written text lines, and the application needed a `ContractTypeRegistry<TaxReportGenerator>` to pick one. The generators were almost identical (same values, slightly different wording such as `"Reduced tax"` vs `"Already paid tax"`), and `TaxReport` was a list of preformatted strings. A non-text destination (GUI table, JSON, PDF) could not use it: numbers were already turned into text, and nothing told the renderer which value was an amount, a rounded amount or a rate.
+
+#### Previous Code (Before)
+```java
+public interface TaxReportGenerator extends ContractTypeAware {
+
+    TaxReport generate(TaxCalculationResult result);
+}
+
+public class CivilContractReportGenerator implements TaxReportGenerator {
+
+    @Override
+    public TaxReport generate(TaxCalculationResult result) {
+        return new TaxReport(List.of(
+                "income " + formatAmount(result.getGrossIncome()),
+                "Social security tax = " + formatAmount(result.getPensionContribution()),
+                ...
+                "Already paid tax = " + formatAmount(result.getReducedTax()),
+                ...));
+    }
+}
+
+reportWriter.write(reportGenerators.get(result.getContractType()).generate(result));
+```
+
+#### New Modified Code (After)
+The report is a structured, technology-neutral description — a title and typed entries:
+```java
+public enum ValueFormat {
+    AMOUNT,
+    WHOLE_AMOUNT,
+    RATE
+}
+
+@Getter
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
+public class ReportEntry {
+
+    private final String label;
+    private final BigDecimal value;
+    private final ValueFormat format;
+
+    public static ReportEntry amount(String label, BigDecimal value) { ... }
+
+    public static ReportEntry wholeAmount(String label, BigDecimal value) { ... }
+
+    public static ReportEntry rate(String label, BigDecimal value) { ... }
+}
+
+@Getter
+public class TaxReport {
+
+    private final String title;
+    private final List<ReportEntry> entries;
+}
+```
+Every calculation result describes itself:
+```java
+public TaxReport toReport() {
+    return new TaxReport(contractType.getDescription(), List.of(
+            amount("Gross income", grossIncome),
+            amount("Pension contribution", pensionContribution),
+            ...
+            rate("Advance tax rate", TaxRates.ADVANCE_TAX_RATE),
+            amount("Advance tax", advanceTax),
+            amount("Tax-free allowance", taxFreeAllowance),
+            amount("Tax after allowance", reducedTax),
+            amount("Advance tax payable", advanceTaxPaid),
+            wholeAmount("Advance tax payable (rounded)", roundedAdvanceTaxPaid),
+            amount("Net income", netIncome)));
+}
+```
+One renderer per destination, working for every contract type; only the renderer decides how each `ValueFormat` looks:
+```java
+@RequiredArgsConstructor
+public class ConsoleReportWriter implements ReportWriter {
+
+    private static final String LABEL_SEPARATOR = ": ";
+
+    private final PrintStream out;
+
+    @Override
+    public void write(TaxReport report) {
+        out.println(report.getTitle());
+        report.getEntries().forEach(entry -> out.println(entry.getLabel() + LABEL_SEPARATOR + formatValue(entry)));
+    }
+
+    private String formatValue(ReportEntry entry) {
+        return switch (entry.getFormat()) {
+            case AMOUNT -> formatAmount(entry.getValue());
+            case WHOLE_AMOUNT -> formatWholeAmount(entry.getValue());
+            case RATE -> formatRate(entry.getValue());
+        };
+    }
+}
+
+public void run() {
+    TaxInput input = inputReader.read();
+
+    TaxCalculationResult result = calculatorService.calculate(input.getContractType(), input.getIncome());
+
+    reportWriter.write(result.toReport());
+}
+```
+Removed: `TaxReportGenerator`, `EmploymentReportGenerator`, `CivilContractReportGenerator`, the generator registry in `main`, and the `view` package. `TaxReport` moved to the new `report` package; `ReportValueFormatter` moved to `output`, because number formatting is a rendering concern.
+
+#### Console Output (gross income 1000.00 PLN, civil contract)
+```
+CIVIL
+Gross income: 1000.00
+Pension contribution: 97.60
+...
+Advance tax payable (rounded): 57
+Net income: 728.24
+```
+Both contract types now use the same `Label: value` layout and the same labels. Civil reports gain a `CIVIL` title, which makes `ContractType.description` used instead of dead. Values are unchanged.
+
+#### Clean Code Principle & Rationale
+- **Output depends only on the report**: a renderer needs no knowledge of contract types. A new contract type needs no output code; a new destination (JSON, GUI table, PDF) is one `ReportWriter` that maps the three `ValueFormat`s.
+- **DRY / Clean Code Ch. 17 (G5: Duplication)**: two near-identical generators are replaced by one description of the calculation.
+- **Separation of content and presentation**: the report carries raw `BigDecimal` values and their meaning (`ValueFormat`); formatting (`1000.00`, `752`, `18%`) happens only in the renderer.
+- **Exhaustive switch expression**: the `switch` in the renderer is a rendering decision per value type, not a contract-type conditional. Being an exhaustive switch over an enum, adding a new `ValueFormat` fails compilation until every renderer handles it.
+- **Intention-revealing factories**: `amount(...)`, `wholeAmount(...)`, `rate(...)` read as a specification of the report; the private constructor prevents inconsistent entries.
+- **Immutability**: `TaxReport` copies its entries with `List.copyOf`.
+- **Unified, accurate labels (Ch. 2)**: domain names such as "Pension contribution", "Tax after allowance" and "Advance tax payable" replace the inconsistent kata wording ("Social security tax", "Reduced tax" / "Already paid tax").
+
+---
+
 ## 4. Verification & Testing
 
 The test suite uses JUnit 5 and AssertJ and runs with a single Maven command:
 
-1. **Unit tests per class**: `ContractTypeTest`, `ContractTypeRegistryTest`, `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`, `TaxCalculatorServiceTest`, `ReportValueFormatterTest`, `EmploymentReportGeneratorTest`, `CivilContractReportGeneratorTest`, `ConsoleTaxInputReaderTest`, `ConsoleReportWriterTest`.
+1. **Unit tests per class**: `ContractTypeTest`, `ContractTypeRegistryTest`, `TaxCalculationResultTest` (report structure), `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`, `TaxCalculatorServiceTest`, `ConsoleTaxInputReaderTest`, `ConsoleReportWriterTest`, `ReportValueFormatterTest`.
 2. **Application flow test** `TaxCalculatorApplicationTest`: whole flow with in-memory input and output.
 3. **End-to-end test** `TaxCalculatorTest`: runs `main` with redirected standard streams for both contract types and for invalid input.
 
@@ -1285,7 +1427,7 @@ The test suite uses JUnit 5 and AssertJ and runs with a single Maven command:
 ```bash
 mvn test
 ```
-**Result**: `Tests run: 59, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`
+**Result**: `Tests run: 58, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`
 
 ### Running the Application:
 ```bash
@@ -1301,16 +1443,16 @@ java -cp target/classes com.bartoszwalter.students.taxes.TaxCalculator
 |---|---|---|
 | **Lines in `main`** | 108 lines | 8 lines; object graph built in `createApplication()` |
 | **Build** | None — manual `javac`, committed `lombok.jar` | Maven, one command (`mvn test`), declared dependencies |
-| **Directory Structure** | Flat single-folder mess | Standard Maven layout; packages `model`, `strategy`, `service`, `view`, `input`, `output` match directories |
+| **Directory Structure** | Flat single-folder mess | Standard Maven layout; packages `model`, `strategy`, `service`, `report`, `input`, `output` match directories |
 | **Numeric Type** | `double` (floating-point precision bugs) | `BigDecimal`, `HALF_UP` rounding per *Ordynacja podatkowa* art. 63 |
 | **Domain Correctness** | Health base and civil expenses from gross income, negative tax possible | Polish rules: base after social security contributions, non-negative tax base and tax |
 | **Boilerplate Reduction** | 150+ lines of manual constructors & getters | Clean domain models with Lombok (`@Getter`, `@Builder`, `@AllArgsConstructor`, `@RequiredArgsConstructor`) |
 | **Dead Code / Deprecated** | Cluttered with legacy static state | 0 deprecated fields/methods, no unreachable branches |
 | **Comments** | Confusing/misleading comments | 0 comments (100% self-documenting code) |
 | **State Management** | 12 mutable `public static` fields | Immutable result and report; all components immutable after construction |
-| **Magic Numbers** | Scattered throughout formulas and labels | Centralized in `TaxRates`, reused by report labels |
-| **Contract Extensibility** | Requires editing nested `if-else` | New enum constant + `TaxStrategy` + `TaxReportGenerator`, registered in `main` |
-| **Input / Output** | Hard-wired `System.in` / `System.out` | `TaxInputReader` and `ReportWriter` abstractions; console is one replaceable implementation |
-| **Separation of Concerns** | Mixed I/O, math, and presentation | Input, Domain, Service, Report content, Output destination; flow in `TaxCalculatorApplication` |
-| **Testability** | Required hijacking `System.in`/`System.out` | 59 JUnit 5 tests; flow tested with in-memory input/output, one end-to-end test |
+| **Magic Numbers** | Scattered throughout formulas and labels | Centralized in `TaxRates`, reported as rate entries |
+| **Contract Extensibility** | Requires editing nested `if-else` | New enum constant + `TaxStrategy`, registered in `main`; no output code needed |
+| **Input / Output** | Hard-wired `System.in` / `System.out` | `TaxInputReader` and `ReportWriter` abstractions; the structured `TaxReport` drives rendering |
+| **Separation of Concerns** | Mixed I/O, math, and presentation | Input, Domain, Service, Report content, Rendering; flow in `TaxCalculatorApplication` |
+| **Testability** | Required hijacking `System.in`/`System.out` | 58 JUnit 5 tests; flow tested with in-memory input/output, one end-to-end test |
 | **SOLID Principles** | Violated SRP, OCP, DRY | SRP, OCP, LSP, ISP, DIP (all collaborators injected) |
