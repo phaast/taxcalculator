@@ -4,9 +4,7 @@ This document tells the story of how the tax calculator was refactored. Each dec
 
 - **What was wrong**: the problem we found.
 - **Why it mattered**: why we saw it as a problem.
-- **What we changed**: the fix, in short.
-- **Example**: one real before/after from the code or from the program output. Code is trimmed to the lines that matter, and `...` marks removed lines.
-- **All changes**: the complete list of changes made under this decision.
+- **What we changed**: the fix, with an example and the summary in short.
 
 Unless stated otherwise, the program output shown is for a monthly income of 1000.00 PLN.
 
@@ -41,7 +39,7 @@ Unless stated otherwise, the program output shown is for a monthly income of 100
   - [Iteration 4: The report drives the output](#iteration-4-the-report-drives-the-output)
     - [4.1 Each calculation produces one structured report](#41-each-calculation-produces-one-structured-report)
   - [The result](#the-result)
-    - [Still open](#still-open)
+  - [Possible further development](#possible-further-development)
 
 ---
 
@@ -580,22 +578,6 @@ public class TaxCalculationResult {
 
 ## Iteration 2
 
-After iteration 1 we reviewed the code again. Some proposals were accepted and some were not:
-
-| Proposal | Decision |
-| --- | --- |
-| Use a standard build tool and folder layout | Accepted ([2.1](#s2-1)) |
-| Use a real test framework | Accepted ([2.2](#s2-2)) |
-| Pass strategies into the service instead of creating them inside it | Accepted ([2.3](#s2-3)) |
-| One report printer per contract type | Accepted ([2.4](#s2-4)) |
-| Make the calculations follow real Polish tax rules | Accepted ([2.5](#s2-5)) |
-| Replace Lombok with Java `record`s | Rejected. Lombok works well, so we kept it |
-| Add a separate input-reading layer | Rejected at the time, revisited in iteration 3 |
-| Replace the shared base class with composition | Postponed, still open |
-| Keep the "no comments" rule | Confirmed |
-
-<sub>[↑ Back to contents](#contents)</sub>
-
 <a id="s2-1"></a>
 
 ### 2.1 A proper build with Maven
@@ -902,7 +884,7 @@ Net income at 1000 PLN: employment 736.90 → 763.24, civil contract 706.90 → 
 
 ## Iteration 3: Input and output that can be swapped
 
-Here we revisited one earlier decision. Today the program reads from the keyboard and prints to the console, but it should be possible to switch to a file, a GUI or a web page later without rewriting the core.
+Today the program reads from the keyboard and prints to the console, but it should be possible to switch to a file, a GUI or a web page later without rewriting the core.
 
 <sub>[↑ Back to contents](#contents)</sub>
 
@@ -1161,10 +1143,10 @@ Net income = 728.24                            Tax after allowance: 124.20
 
 <sub>[↑ Back to contents](#contents)</sub>
 
-<a id="still-open"></a>
+---
 
-### Still open
+## Possible further development
 
-We have not yet decided whether to replace the shared base class of the strategies with *composition*, that is, building strategies from small parts instead of inheriting from a common parent. This proposal was postponed in iteration 2.
+**Composition instead of a shared base class.** Today the contract strategies inherit the shared calculation steps from `AbstractTaxStrategy` and override two of them. Instead, the steps could become small, separate parts (for example "how expenses are calculated" and "how big the allowance is") that each strategy is assembled from. A new contract type could then reuse and combine existing parts instead of extending one parent class.
 
 <sub>[↑ Back to contents](#contents)</sub>
