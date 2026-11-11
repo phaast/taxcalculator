@@ -1,15 +1,23 @@
 package com.bartoszwalter.students.taxes.strategy;
 
+import static com.bartoszwalter.students.taxes.strategy.TaxAmounts.applyRate;
+import static com.bartoszwalter.students.taxes.strategy.TaxAmounts.nonNegative;
+import static com.bartoszwalter.students.taxes.strategy.TaxAmounts.roundToWhole;
+
+import com.bartoszwalter.students.taxes.model.ContractType;
 import com.bartoszwalter.students.taxes.model.TaxCalculationResult;
 import com.bartoszwalter.students.taxes.model.TaxRates;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 
-public abstract class AbstractTaxStrategy implements TaxStrategy {
+@RequiredArgsConstructor
+public final class ContractTaxStrategy implements TaxStrategy {
 
-    private static final int CURRENCY_SCALE = 2;
-    private static final int INTEGER_SCALE = 0;
-    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+    @Getter
+    private final ContractType contractType;
+    private final TaxDeductibleExpenses taxDeductibleExpenses;
+    private final BigDecimal taxFreeAllowance;
 
     @Override
     public TaxCalculationResult calculate(BigDecimal grossIncome) {
@@ -22,12 +30,11 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
         BigDecimal healthContribution = applyRate(incomeAfterSocialSecurity, TaxRates.HEALTH_CONTRIBUTION_RATE);
         BigDecimal taxDeductibleHealthContribution = applyRate(incomeAfterSocialSecurity, TaxRates.TAX_DEDUCTIBLE_HEALTH_RATE);
 
-        BigDecimal taxDeductibleExpenses = calculateTaxDeductibleExpenses(incomeAfterSocialSecurity);
-        BigDecimal taxableBase = nonNegative(incomeAfterSocialSecurity.subtract(taxDeductibleExpenses));
+        BigDecimal deductibleExpenses = taxDeductibleExpenses.calculate(incomeAfterSocialSecurity);
+        BigDecimal taxableBase = nonNegative(incomeAfterSocialSecurity.subtract(deductibleExpenses));
         BigDecimal roundedTaxableBase = roundToWhole(taxableBase);
 
         BigDecimal advanceTax = applyRate(roundedTaxableBase, TaxRates.ADVANCE_TAX_RATE);
-        BigDecimal taxFreeAllowance = getTaxFreeAllowance();
         BigDecimal reducedTax = nonNegative(advanceTax.subtract(taxFreeAllowance));
 
         BigDecimal advanceTaxPaid = nonNegative(reducedTax.subtract(taxDeductibleHealthContribution));
@@ -36,7 +43,7 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
         BigDecimal netIncome = incomeAfterSocialSecurity.subtract(healthContribution).subtract(roundedAdvanceTaxPaid);
 
         return TaxCalculationResult.builder()
-                .contractType(getContractType())
+                .contractType(contractType)
                 .grossIncome(grossIncome)
                 .pensionContribution(pensionContribution)
                 .disabilityContribution(disabilityContribution)
@@ -45,7 +52,7 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
                 .healthContributionBase(incomeAfterSocialSecurity)
                 .healthContribution(healthContribution)
                 .taxDeductibleHealthContribution(taxDeductibleHealthContribution)
-                .taxDeductibleExpenses(taxDeductibleExpenses)
+                .taxDeductibleExpenses(deductibleExpenses)
                 .taxableBase(taxableBase)
                 .roundedTaxableBase(roundedTaxableBase)
                 .advanceTax(advanceTax)
@@ -55,21 +62,5 @@ public abstract class AbstractTaxStrategy implements TaxStrategy {
                 .roundedAdvanceTaxPaid(roundedAdvanceTaxPaid)
                 .netIncome(netIncome)
                 .build();
-    }
-
-    protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity);
-
-    protected abstract BigDecimal getTaxFreeAllowance();
-
-    protected BigDecimal applyRate(BigDecimal amount, BigDecimal rate) {
-        return amount.multiply(rate).setScale(CURRENCY_SCALE, ROUNDING_MODE);
-    }
-
-    protected BigDecimal roundToWhole(BigDecimal amount) {
-        return amount.setScale(INTEGER_SCALE, ROUNDING_MODE);
-    }
-
-    private BigDecimal nonNegative(BigDecimal amount) {
-        return amount.max(BigDecimal.ZERO);
     }
 }

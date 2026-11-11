@@ -3,8 +3,7 @@ package com.bartoszwalter.students.taxes;
 import com.bartoszwalter.students.taxes.input.ConsoleTaxInputReader;
 import com.bartoszwalter.students.taxes.output.ConsoleReportWriter;
 import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
-import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
-import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
+import com.bartoszwalter.students.taxes.strategy.TaxStrategies;
 import java.util.List;
 
 public class TaxCalculator {
@@ -27,7 +26,7 @@ public class TaxCalculator {
 
     private static TaxCalculatorService createCalculatorService() {
         return new TaxCalculatorService(List.of(
-                new EmploymentTaxStrategy(),
-                new CivilContractTaxStrategy()));
+                TaxStrategies.employment(),
+                TaxStrategies.civilContract()));
     }
 }

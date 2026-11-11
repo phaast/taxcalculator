@@ -4,8 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.bartoszwalter.students.taxes.model.ContractType;
-import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
-import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
+import com.bartoszwalter.students.taxes.strategy.TaxStrategies;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -17,8 +16,8 @@ class TaxCalculatorServiceTest {
     private static final BigDecimal INCOME = new BigDecimal("1000.00");
 
     private final TaxCalculatorService service = new TaxCalculatorService(List.of(
-            new EmploymentTaxStrategy(),
-            new CivilContractTaxStrategy()));
+            TaxStrategies.employment(),
+            TaxStrategies.civilContract()));
 
     @ParameterizedTest
     @EnumSource(ContractType.class)
@@ -40,7 +39,7 @@ class TaxCalculatorServiceTest {
 
     @Test
     void rejectsContractTypeWithoutStrategy() {
-        TaxCalculatorService employmentOnlyService = new TaxCalculatorService(List.of(new EmploymentTaxStrategy()));
+        TaxCalculatorService employmentOnlyService = new TaxCalculatorService(List.of(TaxStrategies.employment()));
 
         assertThatThrownBy(() -> employmentOnlyService.calculate(ContractType.CIVIL, INCOME))
                 .isInstanceOf(IllegalArgumentException.class);

@@ -8,8 +8,7 @@ import com.bartoszwalter.students.taxes.model.TaxInput;
 import com.bartoszwalter.students.taxes.report.ReportEntry;
 import com.bartoszwalter.students.taxes.report.TaxReport;
 import com.bartoszwalter.students.taxes.service.TaxCalculatorService;
-import com.bartoszwalter.students.taxes.strategy.CivilContractTaxStrategy;
-import com.bartoszwalter.students.taxes.strategy.EmploymentTaxStrategy;
+import com.bartoszwalter.students.taxes.strategy.TaxStrategies;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +44,7 @@ class TaxCalculatorApplicationTest {
     private TaxCalculatorApplication applicationFor(TaxInput input) {
         return new TaxCalculatorApplication(
                 () -> input,
-                new TaxCalculatorService(List.of(new EmploymentTaxStrategy(), new CivilContractTaxStrategy())),
+                new TaxCalculatorService(List.of(TaxStrategies.employment(), TaxStrategies.civilContract())),
                 writtenReports::add);
     }
 }

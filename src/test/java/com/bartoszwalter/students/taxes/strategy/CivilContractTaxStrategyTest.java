@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class CivilContractTaxStrategyTest {
 
-    private final TaxStrategy strategy = new CivilContractTaxStrategy();
+    private final TaxStrategy strategy = TaxStrategies.civilContract();
 
     @Test
     void calculatesFullBreakdownForCivilContract() {
