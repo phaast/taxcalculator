@@ -38,8 +38,9 @@ Unless stated otherwise, the program output shown is for a monthly income of 100
     - [3.3 Separating the application flow from `main`](#33-separating-the-application-flow-from-main)
   - [Iteration 4: The report drives the output](#iteration-4-the-report-drives-the-output)
     - [4.1 Each calculation produces one structured report](#41-each-calculation-produces-one-structured-report)
+  - [Iteration 5: Strategies built from parts](#iteration-5-strategies-built-from-parts)
+    - [5.1 Build each contract type from small parts instead of a parent class](#51-build-each-contract-type-from-small-parts-instead-of-a-parent-class)
   - [The result](#the-result)
-  - [Possible further development](#possible-further-development)
 
 ---
 
@@ -59,7 +60,7 @@ The original code was a single file, `TaxCalculator.java`, and it had serious pr
 - **All data lived in 12 global variables** that any part of the code could change at any time.
 - **Money was stored as `double`**, a number type that cannot represent amounts such as 0.10 exactly.
 
-The refactoring took four iterations. After each one we reviewed the code again and agreed what to do next.
+The refactoring took five iterations. After each one we reviewed the code again and agreed what to do next.
 
 <sub>[↑ Back to contents](#contents)</sub>
 
@@ -700,6 +701,10 @@ assertThat(result.getPensionContribution()).isEqualByComparingTo("97.60");
 | `model/TaxCalculationResultTest` | the report lists every calculation step | [4.1](#s4-1) |
 | `output/ConsoleReportWriterTest` | the console layout of a report | [3.2](#s3-2), rewritten in [4.1](#s4-1) |
 | `output/ReportValueFormatterTest` | amounts with 2 decimals and a dot in any language setting, percentages | [2.4](#s2-4) |
+| `strategy/ContractTaxStrategyTest` | the calculation uses the parts it was given | [5.1](#s5-1) |
+| `strategy/FixedTaxDeductibleExpensesTest` | fixed expenses are the same for any income | [5.1](#s5-1) |
+| `strategy/PercentageTaxDeductibleExpensesTest` | percentage expenses, rounded to the grosz | [5.1](#s5-1) |
+| `strategy/TaxAmountsTest` | rounding at .50, negative amounts become zero | [5.1](#s5-1) |
 
 <sub>[↑ Back to contents](#contents)</sub>
 
@@ -1123,6 +1128,99 @@ Net income = 728.24                            Tax after allowance: 124.20
 
 ---
 
+<a id="iteration-5"></a>
+
+## Iteration 5: Strategies built from parts
+
+<a id="s5-1"></a>
+
+### 5.1 Build each contract type from small parts instead of a parent class
+
+**What was wrong:** Since [1.6](#s1-6), the shared calculation lived in a parent class, `AbstractTaxStrategy`. Each contract type was a child class that filled in two gaps: how to calculate the expenses and how big the allowance is.
+
+**Why it mattered:**
+
+- The two contract types differ only in two settings, yet each one needed its own class.
+- The settings could not be mixed. A new contract type with fixed expenses (like employment) and no allowance (like civil) could not reuse either class. It would have to copy code into a third one.
+- The child classes depended on the inner workings of the parent class. A change in the parent could break every child.
+
+**What we changed:** There is now a single calculation class, `ContractTaxStrategy`, which is given its parts when it is created. The rule for expenses became a small, separate part with two versions, a fixed amount or a percentage of income. Each contract type is now a combination of parts, built in one place, `TaxStrategies`. This is called *composition*: building something out of parts instead of inheriting from a parent. The results did not change at all.
+
+**Example.** Before, the civil contract was a child class of `AbstractTaxStrategy`:
+
+```java
+public class CivilContractTaxStrategy extends AbstractTaxStrategy {
+
+    @Override
+    public ContractType getContractType() {
+        return ContractType.CIVIL;
+    }
+
+    @Override
+    protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity) {
+        return applyRate(incomeAfterSocialSecurity, TaxRates.CIVIL_EXPENSES_PERCENTAGE);
+    }
+
+    @Override
+    protected BigDecimal getTaxFreeAllowance() {
+        return TaxRates.CIVIL_TAX_FREE_ALLOWANCE;
+    }
+}
+```
+
+After, it is a combination of parts in `TaxStrategies.java`:
+
+```java
+public static TaxStrategy civilContract() {
+    return new ContractTaxStrategy(
+            ContractType.CIVIL,
+            new PercentageTaxDeductibleExpenses(TaxRates.CIVIL_EXPENSES_PERCENTAGE),
+            TaxRates.CIVIL_TAX_FREE_ALLOWANCE);
+}
+```
+
+The calculation class receives the parts and uses them. Its steps are the same as before:
+
+```java
+public final class ContractTaxStrategy implements TaxStrategy {
+
+    private final ContractType contractType;
+    private final TaxDeductibleExpenses taxDeductibleExpenses;
+    private final BigDecimal taxFreeAllowance;
+
+    @Override
+    public TaxCalculationResult calculate(BigDecimal grossIncome) {
+        ...
+        BigDecimal deductibleExpenses = taxDeductibleExpenses.calculate(incomeAfterSocialSecurity);
+        ...
+        BigDecimal reducedTax = nonNegative(advanceTax.subtract(taxFreeAllowance));
+        ...
+    }
+}
+```
+
+**All changes:**
+
+- `AbstractTaxStrategy` became `ContractTaxStrategy`. It is no longer a parent class; it is one complete class that receives its parts: a contract type, an expense rule and an allowance. The file was renamed, so Git keeps its history.
+- Deleted the child classes `EmploymentTaxStrategy` and `CivilContractTaxStrategy`.
+- New interface `TaxDeductibleExpenses`: "given the income after contributions, return the expenses". It has two versions:
+  - `FixedTaxDeductibleExpenses`, always the same amount (111.25 PLN for employment);
+  - `PercentageTaxDeductibleExpenses`, a percentage of income (20% for civil contracts).
+- New class `TaxStrategies` with `employment()` and `civilContract()`, the only place where each contract type is put together.
+- The rounding helpers (`applyRate`, `roundToWhole`, `nonNegative`) moved out of the parent class into a new class, `TaxAmounts`, so that any part can use the same rounding rule.
+- `main` and the tests now get the strategies from `TaxStrategies`.
+- New tests:
+  - `ContractTaxStrategyTest`, which checks the calculation with simple test parts;
+  - `FixedTaxDeductibleExpensesTest` and `PercentageTaxDeductibleExpensesTest`;
+  - `TaxAmountsTest`, which checks rounding at .50 and that negative amounts become zero.
+- Unchanged:
+  - the expected values in `EmploymentTaxStrategyTest` and `CivilContractTaxStrategyTest`, which still pass;
+  - the program output for 100, 300, 1000, 1000.98 and 5000 PLN, which is identical before and after for both contract types.
+
+<sub>[↑ Back to contents](#contents)</sub>
+
+---
+
 <a id="the-result"></a>
 
 ## The result
@@ -1136,17 +1234,9 @@ Net income = 728.24                            Tax after allowance: 124.20
 | Tax rates | Bare numbers scattered around | Named, in one place |
 | Names | `soc_health1`, `df00`, `taxedIncome0` | `healthContribution`, `roundedTaxableBase` |
 | Duplication | About 90% copy-paste between contracts | Shared steps written once |
-| Adding a contract type | Edit a big `if/else` | Add one strategy class |
+| Adding a contract type | Edit a big `if/else` | Combine existing parts in one new `TaxStrategies` method |
 | Changing input or output | Rewrite `main` | Add one reader or writer class |
 | Build | Manual command, one IDE | `mvn test` |
-| Tests | One hand-run file, loose checks | 58 JUnit tests in 11 files, exact values and edge cases |
-
-<sub>[↑ Back to contents](#contents)</sub>
-
----
-
-## Possible further development
-
-**Composition instead of a shared base class.** Today the contract strategies inherit the shared calculation steps from `AbstractTaxStrategy` and override two of them. Instead, the steps could become small, separate parts (for example "how expenses are calculated" and "how big the allowance is") that each strategy is assembled from. A new contract type could then reuse and combine existing parts instead of extending one parent class.
+| Tests | One hand-run file, loose checks | 75 JUnit tests in 15 files, exact values and edge cases |
 
 <sub>[↑ Back to contents](#contents)</sub>

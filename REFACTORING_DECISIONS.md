@@ -86,15 +86,31 @@ classDiagram
         +calculate(income: BigDecimal) TaxCalculationResult
     }
 
-    class AbstractTaxStrategy {
-        <<abstract>>
+    class ContractTaxStrategy {
+        <<final>>
+        -contractType: ContractType
+        -taxDeductibleExpenses: TaxDeductibleExpenses
+        -taxFreeAllowance: BigDecimal
         +calculate(income: BigDecimal) TaxCalculationResult
-        #calculateTaxDeductibleExpenses(incomeAfterSocialSecurity: BigDecimal)* BigDecimal
-        #getTaxFreeAllowance()* BigDecimal
     }
 
-    class EmploymentTaxStrategy
-    class CivilContractTaxStrategy
+    class TaxDeductibleExpenses {
+        <<interface>>
+        +calculate(incomeAfterSocialSecurity: BigDecimal) BigDecimal
+    }
+
+    class FixedTaxDeductibleExpenses
+    class PercentageTaxDeductibleExpenses
+
+    class TaxStrategies {
+        <<factory>>
+        +employment()$ TaxStrategy
+        +civilContract()$ TaxStrategy
+    }
+
+    class TaxAmounts {
+        <<utility>>
+    }
 
     class TaxRates {
         <<constants>>
@@ -146,11 +162,15 @@ classDiagram
     TaxCalculatorService --> ContractTypeRegistry
     ContractTypeRegistry o-- ContractTypeAware
     TaxStrategy --|> ContractTypeAware
-    AbstractTaxStrategy ..|> TaxStrategy
-    EmploymentTaxStrategy --|> AbstractTaxStrategy
-    CivilContractTaxStrategy --|> AbstractTaxStrategy
-    AbstractTaxStrategy ..> TaxRates
-    AbstractTaxStrategy ..> TaxCalculationResult
+    ContractTaxStrategy ..|> TaxStrategy
+    ContractTaxStrategy o-- TaxDeductibleExpenses
+    FixedTaxDeductibleExpenses ..|> TaxDeductibleExpenses
+    PercentageTaxDeductibleExpenses ..|> TaxDeductibleExpenses
+    TaxStrategies ..> ContractTaxStrategy
+    ContractTaxStrategy ..> TaxAmounts
+    PercentageTaxDeductibleExpenses ..> TaxAmounts
+    ContractTaxStrategy ..> TaxRates
+    ContractTaxStrategy ..> TaxCalculationResult
     TaxCalculationResult ..> TaxReport
     TaxReport o-- ReportEntry
     ReportEntry --> ValueFormat
@@ -715,7 +735,7 @@ After the first iteration the codebase was reviewed again against Clean Code. Th
 | Replace Lombok with Java `record`s | **Rejected** — Lombok stays, Decision 3 remains valid |
 | Dedicated CLI / input-reader layer, finer exception handling in `main` | **Rejected** — current input and error handling in `main` are sufficient |
 | Inject strategies into `TaxCalculatorService` instead of creating them inside | **Accepted** → Decision 13 |
-| Composition instead of Template Method inheritance, splitting `AbstractTaxStrategy.calculate()` | **Deferred** — no decision yet |
+| Composition instead of Template Method inheritance, splitting `AbstractTaxStrategy.calculate()` | **Deferred** — implemented in iteration 5 → Decision 20 |
 | Independent report printer per contract scenario | **Accepted** → Decision 14 |
 | Calculations compliant with Polish tax rules | **Accepted** → Decision 15 |
 | "No comments" rule (Decision 5) | **Reaffirmed** — code must be readable without comments |
@@ -1534,13 +1554,186 @@ Both contract types now use the same `Label: value` layout and the same labels. 
 
 ---
 
+### Iteration 5 — Strategies Assembled from Parts
+
+The proposal deferred in iteration 2 — composition instead of Template Method inheritance — is implemented. Observable behavior is unchanged: all existing tests pass without modified expectations, and the console output is identical for both contract types.
+
+---
+
+### Decision 20: Composition Instead of Template Method Inheritance
+
+#### Context & Problem
+
+Since Decision 8 the shared calculation lived in `AbstractTaxStrategy`, and each contract type was a subclass overriding two hooks: `calculateTaxDeductibleExpenses` and `getTaxFreeAllowance`.
+
+- **Variation by subclassing**: each contract type was a new class, even though the two contracts differ only in data — a fixed amount vs. a percentage of income, and an allowance value.
+- **No reuse of variations**: a third contract type with fixed expenses (like employment) but no allowance (like civil) could not reuse either subclass; it would copy one hook body into a new subclass.
+- **Fragile base class**: subclasses depended on the base class's internal order of steps and its `protected` helpers (`applyRate`, `roundToWhole`). Any change to the base class affected every subclass.
+- **Rounding helpers tied to the hierarchy**: `applyRate` was reachable only by inheriting from `AbstractTaxStrategy`, so code outside the hierarchy could not use the same rounding rule.
+
+#### Previous Code (Before)
+
+```java
+public abstract class AbstractTaxStrategy implements TaxStrategy {
+
+    @Override
+    public TaxCalculationResult calculate(BigDecimal grossIncome) {
+        ...
+        BigDecimal taxDeductibleExpenses = calculateTaxDeductibleExpenses(incomeAfterSocialSecurity);
+        ...
+        BigDecimal taxFreeAllowance = getTaxFreeAllowance();
+        ...
+    }
+
+    protected abstract BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity);
+
+    protected abstract BigDecimal getTaxFreeAllowance();
+
+    protected BigDecimal applyRate(BigDecimal amount, BigDecimal rate) { ... }
+
+    protected BigDecimal roundToWhole(BigDecimal amount) { ... }
+}
+
+public class CivilContractTaxStrategy extends AbstractTaxStrategy {
+
+    @Override
+    public ContractType getContractType() {
+        return ContractType.CIVIL;
+    }
+
+    @Override
+    protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity) {
+        return applyRate(incomeAfterSocialSecurity, TaxRates.CIVIL_EXPENSES_PERCENTAGE);
+    }
+
+    @Override
+    protected BigDecimal getTaxFreeAllowance() {
+        return TaxRates.CIVIL_TAX_FREE_ALLOWANCE;
+    }
+}
+```
+
+#### New Modified Code (After)
+
+The varying rule for expenses is a small interface with one implementation per rule:
+
+```java
+@FunctionalInterface
+public interface TaxDeductibleExpenses {
+
+    BigDecimal calculate(BigDecimal incomeAfterSocialSecurity);
+}
+
+@RequiredArgsConstructor
+public final class FixedTaxDeductibleExpenses implements TaxDeductibleExpenses {
+
+    private final BigDecimal amount;
+
+    @Override
+    public BigDecimal calculate(BigDecimal incomeAfterSocialSecurity) {
+        return amount;
+    }
+}
+
+@RequiredArgsConstructor
+public final class PercentageTaxDeductibleExpenses implements TaxDeductibleExpenses {
+
+    private final BigDecimal rate;
+
+    @Override
+    public BigDecimal calculate(BigDecimal incomeAfterSocialSecurity) {
+        return applyRate(incomeAfterSocialSecurity, rate);
+    }
+}
+```
+
+One final strategy class receives its parts through the constructor; the calculation steps are unchanged:
+
+```java
+@RequiredArgsConstructor
+public final class ContractTaxStrategy implements TaxStrategy {
+
+    @Getter
+    private final ContractType contractType;
+    private final TaxDeductibleExpenses taxDeductibleExpenses;
+    private final BigDecimal taxFreeAllowance;
+
+    @Override
+    public TaxCalculationResult calculate(BigDecimal grossIncome) {
+        ...
+        BigDecimal deductibleExpenses = taxDeductibleExpenses.calculate(incomeAfterSocialSecurity);
+        ...
+        BigDecimal reducedTax = nonNegative(advanceTax.subtract(taxFreeAllowance));
+        ...
+    }
+}
+```
+
+Each contract type is a configuration, not a class:
+
+```java
+public final class TaxStrategies {
+
+    public static TaxStrategy employment() {
+        return new ContractTaxStrategy(
+                ContractType.EMPLOYMENT,
+                new FixedTaxDeductibleExpenses(TaxRates.STANDARD_EMPLOYMENT_EXPENSES),
+                TaxRates.EMPLOYMENT_TAX_FREE_ALLOWANCE);
+    }
+
+    public static TaxStrategy civilContract() {
+        return new ContractTaxStrategy(
+                ContractType.CIVIL,
+                new PercentageTaxDeductibleExpenses(TaxRates.CIVIL_EXPENSES_PERCENTAGE),
+                TaxRates.CIVIL_TAX_FREE_ALLOWANCE);
+    }
+}
+```
+
+The rounding helpers moved from `protected` base-class methods to a stateless utility usable by any part:
+
+```java
+public final class TaxAmounts {
+
+    public static BigDecimal applyRate(BigDecimal amount, BigDecimal rate) { ... }
+
+    public static BigDecimal roundToWhole(BigDecimal amount) { ... }
+
+    public static BigDecimal nonNegative(BigDecimal amount) { ... }
+}
+```
+
+The composition root uses the factory:
+
+```java
+private static TaxCalculatorService createCalculatorService() {
+    return new TaxCalculatorService(List.of(
+            TaxStrategies.employment(),
+            TaxStrategies.civilContract()));
+}
+```
+
+Files: `AbstractTaxStrategy.java` → `ContractTaxStrategy.java` (renamed with `git mv` to keep history); `EmploymentTaxStrategy.java` and `CivilContractTaxStrategy.java` removed; `TaxDeductibleExpenses`, `FixedTaxDeductibleExpenses`, `PercentageTaxDeductibleExpenses`, `TaxStrategies` and `TaxAmounts` added. `EmploymentTaxStrategyTest` and `CivilContractTaxStrategyTest` keep their expectations and obtain the strategy from `TaxStrategies`. New tests: `ContractTaxStrategyTest`, `FixedTaxDeductibleExpensesTest`, `PercentageTaxDeductibleExpensesTest`, `TaxAmountsTest`.
+
+#### Clean Code Principle & Rationale
+
+- **Composition over inheritance** (*Effective Java*, Item 18; GoF): behavior is assembled from collaborators instead of inherited, which removes the fragile-base-class coupling of the Template Method.
+- **Open/Closed Principle**: a new contract type is a new factory method combining existing parts, e.g. fixed expenses with no allowance; a new expense rule is one new `TaxDeductibleExpenses` implementation. `ContractTaxStrategy` is `final` and never edited for a new contract.
+- **Single Responsibility Principle**: `ContractTaxStrategy` owns the order of calculation steps, each `TaxDeductibleExpenses` owns one expense rule, `TaxStrategies` owns the configuration of each contract type, `TaxAmounts` owns the rounding rules.
+- **Dependency Inversion**: the strategy depends on the `TaxDeductibleExpenses` abstraction, injected through the constructor, consistent with Decision 13.
+- **Testability**: `ContractTaxStrategyTest` verifies the calculation with lambda parts (`income -> BigDecimal.ZERO`), independently of real contract rules; each part is tested in isolation.
+- **Behavior preserved**: `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`, `TaxCalculatorApplicationTest` and the end-to-end `TaxCalculatorTest` pass unchanged; console output for 100, 300, 1000, 1000.98 and 5000 PLN is byte-identical before and after for both contract types.
+
+---
+
 ## 4. Verification & Testing
 
 The test suite uses JUnit 5 and AssertJ and runs with a single Maven command:
 
-1. **Unit tests per class**: `ContractTypeTest`, `ContractTypeRegistryTest`, `TaxCalculationResultTest` (report structure), `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`, `TaxCalculatorServiceTest`, `ConsoleTaxInputReaderTest`, `ConsoleReportWriterTest`, `ReportValueFormatterTest`.
-2. **Application flow test** `TaxCalculatorApplicationTest`: whole flow with in-memory input and output.
-3. **End-to-end test** `TaxCalculatorTest`: runs `main` with redirected standard streams for both contract types and for invalid input.
+1. **Unit tests per class**: `ContractTypeTest`, `ContractTypeRegistryTest`, `TaxCalculationResultTest` (report structure), `ContractTaxStrategyTest`, `FixedTaxDeductibleExpensesTest`, `PercentageTaxDeductibleExpensesTest`, `TaxAmountsTest`, `TaxCalculatorServiceTest`, `ConsoleTaxInputReaderTest`, `ConsoleReportWriterTest`, `ReportValueFormatterTest`.
+2. **Contract configuration tests** `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest`: full calculation of each strategy built by `TaxStrategies`, including rounding and non-negative boundaries.
+3. **Application flow test** `TaxCalculatorApplicationTest`: whole flow with in-memory input and output.
+4. **End-to-end test** `TaxCalculatorTest`: runs `main` with redirected standard streams for both contract types and for invalid input.
 
 ### Test Execution
 
@@ -1548,7 +1741,7 @@ The test suite uses JUnit 5 and AssertJ and runs with a single Maven command:
 mvn test
 ```
 
-**Result**: `Tests run: 58, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`
+**Result**: `Tests run: 75, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`
 
 ### Running the Application
 
@@ -1573,8 +1766,9 @@ java -cp target/classes com.bartoszwalter.students.taxes.TaxCalculator
 | **Comments** | Confusing/misleading comments | 0 comments (100% self-documenting code) |
 | **State Management** | 12 mutable `public static` fields | Immutable result and report; all components immutable after construction |
 | **Magic Numbers** | Scattered throughout formulas and labels | Centralized in `TaxRates`, reported as rate entries |
-| **Contract Extensibility** | Requires editing nested `if-else` | New enum constant + `TaxStrategy`, registered in `main`; no output code needed |
+| **Contract Extensibility** | Requires editing nested `if-else` | New enum constant + one `TaxStrategies` factory method combining existing parts, registered in `main`; no new strategy class, no output code |
+| **Code Reuse** | Copy-paste between contract branches | Composition: one `final` `ContractTaxStrategy` assembled from reusable `TaxDeductibleExpenses` rules and an allowance |
 | **Input / Output** | Hard-wired `System.in` / `System.out` | `TaxInputReader` and `ReportWriter` abstractions; the structured `TaxReport` drives rendering |
 | **Separation of Concerns** | Mixed I/O, math, and presentation | Input, Domain, Service, Report content, Rendering; flow in `TaxCalculatorApplication` |
-| **Testability** | Required hijacking `System.in`/`System.out` | 58 JUnit 5 tests; flow tested with in-memory input/output, one end-to-end test |
+| **Testability** | Required hijacking `System.in`/`System.out` | 75 JUnit 5 tests; flow tested with in-memory input/output, one end-to-end test |
 | **SOLID Principles** | Violated SRP, OCP, DRY | SRP, OCP, LSP, ISP, DIP (all collaborators injected) |
