@@ -6,7 +6,7 @@ This document tells the story of how the tax calculator was refactored. Each dec
 - **Why it mattered**: why we saw it as a problem.
 - **What we changed**: the fix, with an example and the summary in short.
 
-Unless stated otherwise, the program output shown is for a monthly income of 1000.00 PLN.
+Unless stated otherwise, the program output shown is for a monthly income of 1000.00 PLN. The "after" code in iteration 1 shows the code at the end of that iteration, so it already uses `BigDecimal` and Lombok from [1.9](#s1-9).
 
 <a id="contents"></a>
 
@@ -35,9 +35,9 @@ Unless stated otherwise, the program output shown is for a monthly income of 100
     - [3.1 Reading input through an interface](#31-reading-input-through-an-interface)
     - [3.2 Separating *what* the report says from *where* it goes](#32-separating-what-the-report-says-from-where-it-goes)
     - [3.3 Separating the application flow from `main`](#33-separating-the-application-flow-from-main)
-  - [Iteration 4: The report drives the output](#iteration-4-the-report-drives-the-output)
+  - [Iteration 4](#iteration-4)
     - [4.1 Each calculation produces one structured report](#41-each-calculation-produces-one-structured-report)
-  - [Iteration 5: Strategies built from parts](#iteration-5-strategies-built-from-parts)
+  - [Iteration 5](#iteration-5)
     - [5.1 Build each contract type from small parts instead of a parent class](#51-build-each-contract-type-from-small-parts-instead-of-a-parent-class)
   - [Correctness fixes (outside the refactoring)](#correctness-fixes-outside-the-refactoring)
     - [F.1 Tax calculation follows Polish tax rules](#f1-tax-calculation-follows-polish-tax-rules)
@@ -64,8 +64,6 @@ The refactoring took five iterations. After each one we reviewed the code again 
 
 <sub>[↑ Back to contents](#contents)</sub>
 
----
-
 <a id="iteration-1"></a>
 
 ## Iteration 1
@@ -84,11 +82,11 @@ The refactoring took five iterations. After each one we reviewed the code again 
 
 | # | Before (broken) | After (fixed) | Problem |
 | --- | --- | --- | --- |
-| 1 | `public static double advanceTaxPaidadvanceTax = 0; // advance tax 18%` | `public static double advanceTax = 0;` | Garbled name. 6 places used `advanceTax`, which did not exist |
-| 2 | `public static double advanceTaxPaidadvanceTax = 0;` (second time) | `public static double advanceTaxPaid = 0;` | Same name declared twice. 4 places used `advanceTaxPaid`, which did not exist |
-| 3 | `advanceTaxPaidadvanceTax = advanceTax - soc_health2 - taxFreeIncome;` | `advanceTaxPaid = advanceTax - soc_health2 - taxFreeIncome;` | Wrote to the garbled name |
-| 4 | `soc_sick_secur = (income * 2.45) / 100;` | `soc_sick_security = (income * 2.45) / 100;` | Name cut short |
-| 5 | `return (income - ... - soc_sick_secur);` | `return (income - ... - soc_sick_security);` | Name cut short |
+| 1 | `double advanceTaxPaidadvanceTax = 0;` | `double advanceTax = 0;` | Garbled name. 6 places used `advanceTax`, which did not exist |
+| 2 | `double advanceTaxPaidadvanceTax = 0;` (again) | `double advanceTaxPaid = 0;` | Same name declared twice. 4 places used `advanceTaxPaid`, which did not exist |
+| 3 | `advanceTaxPaidadvanceTax = ...;` | `advanceTaxPaid = ...;` | Wrote to the garbled name |
+| 4 | `soc_sick_secur = ...;` | `soc_sick_security = ...;` | Name cut short |
+| 5 | `return (... - soc_sick_secur);` | `return (... - soc_sick_security);` | Name cut short |
 | 6 | `double  advanceTax;` (civil branch) | `double taxPaid = advanceTax;` | The next line printed `taxPaid`, which did not exist in this branch |
 | 7 | `double income = calculateIncome(income);` (civil branch) | `double d_income = calculateIncome(income);` | A new variable `income` hid the real one and was used before it had a value |
 
@@ -98,28 +96,18 @@ With these 7 fixes the program runs. For 1000 PLN it prints a net income of 736.
 
 ```java
 public class TaxCalculatorTest {
-
     public static void main(String[] args) {
         testDirectServiceCalculations();
-        testEmploymentContractWith1000();
-        testEmploymentContractWith5000();
         testCivilContractWith1000();
-        testCivilContractWith5000();
-        testInvalidContractThrowsException();
-        System.out.println("ALL CHARACTERIZATION & UNIT TESTS PASSED SUCCESSFULLY!");
+        ... // 4 more checks
     }
-
     private static void testDirectServiceCalculations() {
         TaxCalculationResult resultE = service.calculate(ContractType.EMPLOYMENT, 1000.0);
-        assertEquals(resultE.getPensionContribution(), 97.60);
-        assertEquals(resultE.getAdvanceTax(), 160.02);
         assertEquals(resultE.getNetIncome(), 736.90);
         ...
     }
-
     private static void testCivilContractWith1000() {
         String output = runWithInput("1000\nC\n");   // types "1000" and "C" as if by keyboard
-        assertContains(output, "Tax deductible expenses = 200.0");
         assertContains(output, "Net income = 706");
         ...
     }
@@ -339,12 +327,10 @@ After, the steps are written once in `AbstractTaxStrategy`, and the employment s
 
 ```java
 public class EmploymentTaxStrategy extends AbstractTaxStrategy {
-
     @Override
     protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal grossIncome) {
         return TaxRates.STANDARD_EMPLOYMENT_EXPENSES;
     }
-
     @Override
     protected BigDecimal getTaxFreeAllowance() {
         return TaxRates.EMPLOYMENT_TAX_FREE_ALLOWANCE;
@@ -396,10 +382,8 @@ After, `main` is a short list of steps, each handled elsewhere:
 public static void main(String[] args) {
     try {
         InputData input = readInput();
-
         TaxCalculatorService service = new TaxCalculatorService();
         TaxCalculationResult result = service.calculate(input.getContractType(), input.getIncome());
-
         TaxReportPrinter printer = new TaxReportPrinter();
         printer.printReport(result);
     } catch (Exception ex) {
@@ -496,7 +480,7 @@ protected BigDecimal roundToWhole(BigDecimal amount) {
 }
 ```
 
-**Example: less boilerplate.** Before, `TaxCalculationResult` listed each of its 18 values four times: as a field, a constructor parameter, an assignment and a getter. The class was about 150 lines long:
+**Example: less boilerplate.** Before, `TaxCalculationResult` repeated each of its 18 fields (the contract type and 17 values) up to four times: as a field, a constructor parameter, an assignment and a getter. The class was about 150 lines long:
 
 ```java
 private final double grossIncome;
@@ -666,7 +650,6 @@ void rejectsUnknownCode() {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Z");
 }
-
 @ParameterizedTest
 @CsvSource({"E, EMPLOYMENT", "e, EMPLOYMENT", "C, CIVIL", "c, CIVIL"})
 void resolvesContractTypeFromCodeIgnoringCase(char code, ContractType expectedType) {
@@ -718,7 +701,6 @@ public TaxCalculatorService() {
     registerStrategy(new EmploymentTaxStrategy());
     registerStrategy(new CivilContractTaxStrategy());
 }
-
 public void registerStrategy(TaxStrategy strategy) {
     strategies.put(strategy.getContractType(), strategy);
 }
@@ -813,8 +795,6 @@ Program output before (computer set to Polish) and after:
 
 > **Note:** At the end of iteration 2, the tax calculation itself was corrected to follow Polish tax rules. That is a bug fix, not a refactoring, so it is described separately in [F.1](#f1). From this point on, the examples show the corrected numbers.
 
----
-
 <a id="iteration-3"></a>
 
 ## Iteration 3
@@ -848,7 +828,6 @@ After, the program depends only on this interface (new file `input/TaxInputReade
 
 ```java
 public interface TaxInputReader {
-
     TaxInput read();
 }
 ```
@@ -956,7 +935,6 @@ public static void main(String[] args) {
         createApplication().run();
     } catch (Exception ex) { ... }
 }
-
 private static TaxCalculatorApplication createApplication() {
     return new TaxCalculatorApplication(
             new ConsoleTaxInputReader(System.in, System.out),
@@ -975,11 +953,9 @@ private static TaxCalculatorApplication createApplication() {
 
 <sub>[↑ Back to contents](#contents)</sub>
 
----
-
 <a id="iteration-4"></a>
 
-## Iteration 4: The report drives the output
+## Iteration 4
 
 <a id="s4-1"></a>
 
@@ -1052,11 +1028,9 @@ Program output for a civil contract, before and after. The numbers are the same;
 
 <sub>[↑ Back to contents](#contents)</sub>
 
----
-
 <a id="iteration-5"></a>
 
-## Iteration 5: Strategies built from parts
+## Iteration 5
 
 <a id="s5-1"></a>
 
@@ -1076,17 +1050,14 @@ Program output for a civil contract, before and after. The numbers are the same;
 
 ```java
 public class CivilContractTaxStrategy extends AbstractTaxStrategy {
-
     @Override
     public ContractType getContractType() {
         return ContractType.CIVIL;
     }
-
     @Override
     protected BigDecimal calculateTaxDeductibleExpenses(BigDecimal incomeAfterSocialSecurity) {
         return applyRate(incomeAfterSocialSecurity, TaxRates.CIVIL_EXPENSES_PERCENTAGE);
     }
-
     @Override
     protected BigDecimal getTaxFreeAllowance() {
         return TaxRates.CIVIL_TAX_FREE_ALLOWANCE;
@@ -1109,11 +1080,9 @@ The calculation class receives the parts and uses them. Its steps are the same a
 
 ```java
 public final class ContractTaxStrategy implements TaxStrategy {
-
     private final ContractType contractType;
     private final TaxDeductibleExpenses taxDeductibleExpenses;
     private final BigDecimal taxFreeAllowance;
-
     @Override
     public TaxCalculationResult calculate(BigDecimal grossIncome) {
         ...
@@ -1224,18 +1193,24 @@ The second fix does not change any number printed today, because the civil contr
 
 ## The result
 
-| | Before | After |
-| --- | --- | --- |
-| Compiles | No (14 errors) | Yes |
-| `main` method | 108 lines doing everything | 8 lines that only assemble the program |
-| Money | `double`, inexact | `BigDecimal`, exact, rounded as the law requires |
-| Tax rules | Partly wrong | Follow Polish rules (a separate fix, see [F.1](#f1)) |
-| Tax rates | Bare numbers scattered around | Named, in one place |
-| Names | `soc_health1`, `df00`, `taxedIncome0` | `healthContribution`, `roundedTaxableBase` |
-| Duplication | About 90% copy-paste between contracts | Shared steps written once |
-| Adding a contract type | Edit a big `if/else` | Combine existing parts in one new `TaxStrategies` method |
-| Changing input or output | Rewrite `main` | Add one reader or writer class |
-| Build | No build tool, compiled by hand | `mvn test` |
-| Tests | One hand-run file, loose checks | 75 JUnit tests in 15 files, exact values and edge cases |
+| | Before | After | See |
+| --- | --- | --- | --- |
+| Compiles | No (14 errors) | Yes | [1.1](#s1-1) |
+| Tax rates | Bare numbers scattered around | Named, in one place | [1.2](#s1-2) |
+| Names | `soc_health1`, `df00`, `taxedIncome0` | `healthContribution`, `roundedTaxableBase` | [1.3](#s1-3) |
+| Data | 12 global variables anyone could change | One result object that cannot change | [1.4](#s1-4) |
+| Contract type | Letters `'E'`/`'C'` compared everywhere | `ContractType`, checked once at input | [1.5](#s1-5) |
+| Duplication | Majority copy-paste code between contracts | Shared steps written once | [1.6](#s1-6) |
+| `main` method | 108 lines doing everything | 8 lines that only assemble the program | [1.7](#s1-7), [3.3](#s3-3) |
+| Dead code and comments | Unused code, comments repeating the code | None; names explain the code | [1.8](#s1-8) |
+| Money | `double`, inexact | `BigDecimal`, exact, rounded as the law requires | [1.9](#s1-9) |
+| Boilerplate | Hand-written constructors and getters | Generated by Lombok | [1.9](#s1-9) |
+| Structure | One file | Folders by role, matching the packages | [1.10](#s1-10), [2.1](#s2-1) |
+| Build | No build tool, compiled by hand | `mvn test` | [2.1](#s2-1) |
+| Tests | None | 75 JUnit tests in 15 files, exact values and edge cases | [1.1](#s1-1), [2.2](#s2-2) |
+| Adding a contract type | Edit a big `if/else` | Combine existing parts in one new `TaxStrategies` method | [2.3](#s2-3), [5.1](#s5-1) |
+| Changing input or output | Rewrite `main` | Add one reader or writer class | [3.1](#s3-1), [3.2](#s3-2) |
+| Report | Different layout per contract, mixed number formats | One structured report, same layout for every contract | [2.4](#s2-4), [4.1](#s4-1) |
+| Tax rules | Partly wrong | Follow Polish rules (a separate fix) | [F.1](#f1), [F.2](#f2) |
 
 <sub>[↑ Back to contents](#contents)</sub>
