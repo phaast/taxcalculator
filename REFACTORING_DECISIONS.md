@@ -737,7 +737,7 @@ After the first iteration the codebase was reviewed again against Clean Code. Th
 | Inject strategies into `TaxCalculatorService` instead of creating them inside | **Accepted** → Decision 13 |
 | Composition instead of Template Method inheritance, splitting `AbstractTaxStrategy.calculate()` | **Deferred** — implemented in iteration 5 → Decision 20 |
 | Independent report printer per contract scenario | **Accepted** → Decision 14 |
-| Calculations compliant with Polish tax rules | **Accepted** → Decision 15 |
+| Calculations compliant with Polish tax rules | **Accepted** → Decision 15 (correctness fix, not a refactoring) |
 | "No comments" rule (Decision 5) | **Reaffirmed** — code must be readable without comments |
 
 ---
@@ -748,7 +748,7 @@ After the first iteration the codebase was reviewed again against Clean Code. Th
 
 - There was no build tool. Compilation required a hand-written `javac` command with a committed `lib/lombok.jar` on the classpath and processor path.
 - Package declarations (`com.bartoszwalter.students.taxes.model`) did not match the directories (`model/`). The project worked only in IntelliJ, thanks to `packagePrefix` in `SEM.iml`.
-- A 2 MB binary (`lib/lombok.jar`) was committed although `.gitignore` excludes `*.jar`, together with machine-specific IDE files (`.idea/`, `SEM.iml`, JDK name `ms-21`).
+- As a temporary workaround added during iteration 1 (not part of the original repository), a 2 MB binary (`lib/lombok.jar`) was committed although `.gitignore` excludes `*.jar`, together with machine-specific IDE files (`.idea/`, `SEM.iml`, JDK name `ms-21`).
 - Test code lived next to production code in the source root.
 
 #### Previous Code (Before)
@@ -1065,12 +1065,15 @@ createReportPrinters().get(result.getContractType()).print(result);
 - **SRP / OCP**: each printer has exactly one reason to change — the report layout of its scenario. A new scenario is a new printer; existing printers are not edited.
 - **Clean Code Ch. 17 (G23: Prefer Polymorphism to If/Else or Switch/Case, G9: Dead Code)**: the type check and the unreachable branch are gone.
 - **Single source of truth (G25)**: the percentages shown in labels are derived from `TaxRates`.
-- **Consistent, correct output**: every amount has 2 decimals and a `.` separator regardless of locale; rounded amounts have none. The mislabelled contribution and whitespace typos (`"Advance tax  = "`) are fixed. The civil report's "Already paid tax" shows `reducedTax` (tax after allowance), which is what the label describes.
+- **Consistent, correct output**: every amount has 2 decimals and a `.` separator regardless of locale; rounded amounts have none. Whitespace typos (`"Advance tax  = "`) are fixed.
+- **Output corrections (not refactoring)**: two report lines were wrong and are corrected together with this decision — the mislabelled disability contribution, and the civil report's "Already paid tax", which now shows `reducedTax` (tax after allowance), as the label describes. `REFACTORING_SUMMARY.md` lists them under "Correctness fixes" (F.2).
 - **Lombok kept (Decision 3)**: `@RequiredArgsConstructor` injects the `PrintStream`. `ReportValueFormatter` is a plain final class rather than Lombok `@UtilityClass`, because javac cannot static-import members of a `@UtilityClass`.
 
 ---
 
-### Decision 15: Calculations Compliant with Polish Tax Rules
+### Decision 15: Calculations Compliant with Polish Tax Rules (Correctness Fix)
+
+> **Not a refactoring.** This decision deliberately changes the program's results and is a bug fix. It was made as a separate change, with test expectations updated on purpose, and is kept apart from the behavior-preserving refactoring decisions. `REFACTORING_SUMMARY.md` describes it in the separate section "Correctness fixes" (F.1).
 
 #### Context & Problem
 
@@ -1757,7 +1760,7 @@ java -cp target/classes com.bartoszwalter.students.taxes.TaxCalculator
 | Quality Attribute | Original `TaxCalculator.java` | Refactored Architecture |
 | --- | --- | --- |
 | **Lines in `main`** | 108 lines | 8 lines; object graph built in `createApplication()` |
-| **Build** | None — manual `javac`, committed `lombok.jar` | Maven, one command (`mvn test`), declared dependencies |
+| **Build** | None — single file compiled manually with `javac` | Maven, one command (`mvn test`), declared dependencies |
 | **Directory Structure** | Flat single-folder mess | Standard Maven layout; packages `model`, `strategy`, `service`, `report`, `input`, `output` match directories |
 | **Numeric Type** | `double` (floating-point precision bugs) | `BigDecimal`, `HALF_UP` rounding per *Ordynacja podatkowa* art. 63 |
 | **Domain Correctness** | Health base and civil expenses from gross income, negative tax possible | Polish rules: base after social security contributions, non-negative tax base and tax |

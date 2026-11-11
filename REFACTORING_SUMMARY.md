@@ -31,8 +31,7 @@ Unless stated otherwise, the program output shown is for a monthly income of 100
     - [2.2 Real, readable tests](#22-real-readable-tests)
     - [2.3 Hand the strategies to the service from outside](#23-hand-the-strategies-to-the-service-from-outside)
     - [2.4 One report printer per contract type](#24-one-report-printer-per-contract-type)
-    - [2.5 Fix the tax rules themselves](#25-fix-the-tax-rules-themselves)
-  - [Iteration 3: Input and output that can be swapped](#iteration-3-input-and-output-that-can-be-swapped)
+  - [Iteration 3](#iteration-3)
     - [3.1 Reading input through an interface](#31-reading-input-through-an-interface)
     - [3.2 Separating *what* the report says from *where* it goes](#32-separating-what-the-report-says-from-where-it-goes)
     - [3.3 Separating the application flow from `main`](#33-separating-the-application-flow-from-main)
@@ -40,9 +39,10 @@ Unless stated otherwise, the program output shown is for a monthly income of 100
     - [4.1 Each calculation produces one structured report](#41-each-calculation-produces-one-structured-report)
   - [Iteration 5: Strategies built from parts](#iteration-5-strategies-built-from-parts)
     - [5.1 Build each contract type from small parts instead of a parent class](#51-build-each-contract-type-from-small-parts-instead-of-a-parent-class)
+  - [Correctness fixes (outside the refactoring)](#correctness-fixes-outside-the-refactoring)
+    - [F.1 Tax calculation follows Polish tax rules](#f1-tax-calculation-follows-polish-tax-rules)
+    - [F.2 Two wrong lines in the report](#f2-two-wrong-lines-in-the-report)
   - [The result](#the-result)
-
----
 
 <a id="where-we-started"></a>
 
@@ -571,7 +571,7 @@ public class TaxCalculationResult {
 **All changes:**
 
 - 9 classes moved into the `model`, `strategy`, `service` and `view` folders, with matching package names and imports.
-- So that the project would build without extra setup, we committed `lib/lombok.jar` and IntelliJ project files (`.idea/`, `SEM.iml`). Iteration 2 replaced this with a proper build (see [2.1](#s2-1)).
+- As a temporary measure, so that the project could be run on a team member's laptop, we added the Lombok library (`lib/lombok.jar`) and IntelliJ project files (`.idea/`, `SEM.iml`).
 
 <sub>[↑ Back to contents](#contents)</sub>
 
@@ -583,13 +583,13 @@ public class TaxCalculationResult {
 
 ### 2.1 A proper build with Maven
 
-**What was wrong:** There was no build tool. Compiling needed a long hand-typed command, a library file stored in Git and IntelliJ-specific settings. The folders also did not match the Java package names, so only IntelliJ could understand the project.
+**What was wrong:** The project had no build tool, neither originally nor after iteration 1. Once the code used a library (Lombok) and was split into folders, compiling it needed a long hand-typed command. Our temporary workaround from [1.10](#s1-10), a library file stored in Git plus IntelliJ settings, made it run on one laptop only. The folders also did not match the Java package names, so only IntelliJ could understand the project.
 
-**Why it mattered:** The project built easily only on one machine and in one IDE. Clean Code says building and testing should take a single step.
+**Why it mattered:** Anyone else who wanted to build the project had to reproduce that setup by hand. Clean Code says building and testing should take a single step.
 
-**What we changed:** We added Maven, the standard Java build tool. `mvn test` now builds and tests everything.
+**What we changed:** We added Maven, the standard Java build tool, and removed the temporary workaround. `mvn test` now builds and tests everything.
 
-**Example.** Before, building needed this command, plus `lib/lombok.jar` stored in Git:
+**Example.** Before, building needed this command, plus the `lib/lombok.jar` we had added:
 
 ```bash
 javac -cp "lib/lombok.jar" -processorpath "lib/lombok.jar" -d . model/*.java strategy/*.java service/*.java view/*.java TaxCalculator.java TaxCalculatorTest.java
@@ -618,7 +618,7 @@ mvn test
   - fixed versions for every build plugin.
 - Code moved to `src/main/java/com/bartoszwalter/students/taxes/...`, so the folders now match the package names.
 - Tests moved to `src/test/java/...`, separate from the program code.
-- Deleted from Git:
+- Deleted from Git the temporary files we had added in [1.10](#s1-10):
   - `lib/lombok.jar` (2 MB);
   - the `.idea/` folder;
   - `SEM.iml`.
@@ -686,25 +686,18 @@ After, in `strategy/EmploymentTaxStrategyTest.java`, the exact value is checked:
 assertThat(result.getPensionContribution()).isEqualByComparingTo("97.60");
 ```
 
-**All changes:** the old `TaxCalculatorTest.java` was deleted. Each later decision then added JUnit tests for the code it touched, so today the suite looks like this:
+**All changes:**
 
-| Test file (under `src/test/java/.../`) | What it checks | Added in |
-| --- | --- | --- |
-| `model/ContractTypeTest` | letters `E`/`e`/`C`/`c` are recognised, others rejected | [2.2](#s2-2) |
-| `model/ContractTypeRegistryTest` | lookup by contract type, duplicates and missing types rejected | [2.3](#s2-3) |
-| `service/TaxCalculatorServiceTest` | picks the right strategy, rejects negative or missing income | [2.3](#s2-3) |
-| `strategy/EmploymentTaxStrategyTest` | every value at 1000 PLN, rounding at .50, no negative tax | [2.5](#s2-5) |
-| `strategy/CivilContractTaxStrategyTest` | every value at 1000 PLN, expenses based on income after contributions | [2.5](#s2-5) |
-| `TaxCalculatorTest` (new, JUnit) | the whole program end to end, including invalid input | [2.5](#s2-5) |
-| `input/ConsoleTaxInputReaderTest` | reading income and contract type, rejecting bad input | [3.1](#s3-1) |
-| `TaxCalculatorApplicationTest` | the full read → calculate → report flow without a real console | [3.3](#s3-3) |
-| `model/TaxCalculationResultTest` | the report lists every calculation step | [4.1](#s4-1) |
-| `output/ConsoleReportWriterTest` | the console layout of a report | [3.2](#s3-2), rewritten in [4.1](#s4-1) |
-| `output/ReportValueFormatterTest` | amounts with 2 decimals and a dot in any language setting, percentages | [2.4](#s2-4) |
-| `strategy/ContractTaxStrategyTest` | the calculation uses the parts it was given | [5.1](#s5-1) |
-| `strategy/FixedTaxDeductibleExpensesTest` | fixed expenses are the same for any income | [5.1](#s5-1) |
-| `strategy/PercentageTaxDeductibleExpensesTest` | percentage expenses, rounded to the grosz | [5.1](#s5-1) |
-| `strategy/TaxAmountsTest` | rounding at .50, negative amounts become zero | [5.1](#s5-1) |
+- The old hand-run `TaxCalculatorTest.java` was deleted.
+- JUnit 5 and AssertJ were added, and the first JUnit test, `ContractTypeTest`, was written.
+- From here on, every decision adds tests for the code it changes. They are listed under "All changes" in each decision.
+
+Today the suite has **75 tests in 15 files**, and `mvn test` runs all of them:
+
+- **11 unit test files**, one per class, each checking that class on its own;
+- **2 contract test files**, which check every calculated value for employment and civil contracts, including rounding and low incomes;
+- **1 flow test**, which runs read → calculate → report with in-memory input and output;
+- **1 end-to-end test**, which runs the real program, including invalid input.
 
 <sub>[↑ Back to contents](#contents)</sub>
 
@@ -716,7 +709,7 @@ assertThat(result.getPensionContribution()).isEqualByComparingTo("97.60");
 
 **Why it mattered:** Adding a contract type still meant editing the service, so the promise of "just add a new class" from [1.6](#s1-6) was not quite true. The public method also meant the service could be changed while the program was running.
 
-**What we changed:** The strategies are now passed into the service when it is created, all in one place next to `main`. A small reusable lookup, `ContractTypeRegistry`, finds the right one for a contract type. This is called *dependency injection*: a class receives what it needs instead of creating it.
+**What we changed:** The strategies are now passed into the service when it is created, all in one place next to `main`. A small reusable lookup, `ContractTypeRegistry`, finds the right one for a contract type.
 
 **Example.** Before, in `TaxCalculatorService.java`:
 
@@ -774,9 +767,8 @@ private static TaxCalculatorService createCalculatorService() {
 - On a computer set to Polish, amounts printed with a comma (`97,60`).
 - Some amounts were not formatted at all (`Income 1000`).
 - Percentages were typed into the labels by hand, duplicating `TaxRates`.
-- The disability contribution was labelled "Health social security tax", a translation mistake.
 
-**Why it mattered:** The output was inconsistent and partly wrong, and every new contract type would have meant editing the printer.
+**Why it mattered:** The output was inconsistent, and every new contract type would have meant editing the printer.
 
 **What we changed:** Each contract type got its own small printer, and all number formatting moved to one place.
 
@@ -796,14 +788,12 @@ public void printReport(TaxCalculationResult result) {
 
 Program output before (computer set to Polish) and after:
 
-```text
-Before                                                 After
-Income 1000                                            Income 1000.00
-Social security tax 97,60                              Social security tax 97.60
-Health social security tax    15,00                    Disability social security tax 15.00
-Income basis for health social security: 1000          Income basis for health social security: 1000.00
-Health social security tax: 9% = 90,00 7,75% = 77,50   Health social security tax: 9% = 90.00 7.75% = 77.50
-```
+| Before | After |
+| --- | --- |
+| `Income 1000` | `Income 1000.00` |
+| `Social security tax 97,60` | `Social security tax 97.60` |
+| `Income basis for health social security: 1000` | `Income basis for health social security: 1000.00` |
+| `Health social security tax: 9% = 90,00 7,75% = 77,50` | `Health social security tax: 9% = 90.00 7.75% = 77.50` |
 
 **All changes:**
 
@@ -814,80 +804,20 @@ Health social security tax: 9% = 90,00 7,75% = 77,50   Health social security ta
   - rounded amounts show none (`752`);
   - rates show as percentages (`18%`).
 - Percentages in the labels now come from `TaxRates` instead of being typed in.
-- The wrong label "Health social security tax" became "Disability social security tax".
 - Extra spaces in labels were removed. For example, `"Advance tax  = "` became `"Advance tax = "`.
-- The civil report's "Already paid tax" line now shows the tax after the allowance, as the label says, instead of the advance tax.
 - The printers are chosen through `ContractTypeRegistry` in `main`, and the unreachable `Unknown type of contract!` branch is gone.
 - New tests: `EmploymentReportPrinterTest`, `CivilContractReportPrinterTest`, `ReportValueFormatterTest`.
+- Two wrong lines in the report were also corrected at this point. They are described separately in [F.2](#f2), because they change what the report says.
 
 <sub>[↑ Back to contents](#contents)</sub>
 
-<a id="s2-5"></a>
-
-### 2.5 Fix the tax rules themselves
-
-**What was wrong:** Iteration 1 deliberately kept the original math so that the results would not change. That math, however, did not follow Polish tax rules.
-
-**Why it mattered:** A clean program that calculates the wrong tax is still wrong. Normally refactoring must not change results, but here the old results were a bug. We made this a separate change so that the change in results is easy to find and explain.
-
-**What we changed:** We corrected the rules listed below and updated the tests to the correct values.
-
-**Example.** In `AbstractTaxStrategy.java`, before:
-
-```java
-RoundingMode ROUNDING_MODE = RoundingMode.HALF_EVEN;
-BigDecimal healthContributionBase = grossIncome;
-BigDecimal taxableBase = grossIncome.subtract(taxDeductibleExpenses);
-```
-
-After:
-
-```java
-RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
-BigDecimal incomeAfterSocialSecurity = grossIncome.subtract(totalSocialSecurity);
-BigDecimal healthContribution = applyRate(incomeAfterSocialSecurity, TaxRates.HEALTH_CONTRIBUTION_RATE);
-BigDecimal taxableBase = nonNegative(incomeAfterSocialSecurity.subtract(taxDeductibleExpenses));
-```
-
-Program output for an employment contract, before and after:
-
-```text
-Before                                                After
-Income basis for health social security: 1000.00     Income basis for health social security: 862.90
-Health social security tax: 9% = 90.00 ...           Health social security tax: 9% = 77.66 ...
-Net income = 736.90                                   Net income = 763.24
-```
-
-Program output for an income of 300.00 PLN, where the old code produced a negative tax:
-
-```text
-Before                                      After
-Reduced tax = -12.31                        Reduced tax = 0.00
-Advance tax paid = -35.56 rounded = -36     Advance tax paid = 0.00 rounded = 0
-```
-
-**All changes:**
-
-- The health contribution (9% and 7.75%) is now calculated from income **after** social security contributions, not from gross income.
-- Tax-deductible expenses are based on income after social security contributions. For civil contracts this changes the 20%: from 200.00 to 172.58 at 1000 PLN.
-- Rounding changed from "banker's rounding" (`HALF_EVEN`, where 0.50 sometimes rounds down) to `HALF_UP` (0.50 always rounds up). Polish tax law, *Ordynacja podatkowa*, art. 63, requires the latter.
-- None of the following can go below zero any more:
-  - the taxable base;
-  - the tax after the allowance;
-  - the tax to pay.
-- The tax to pay is now "tax after allowance minus the deductible health contribution". Before, it was calculated from the advance tax directly.
-- Net income is now "income after social security − health contribution − tax".
-- New tests: `EmploymentTaxStrategyTest`, `CivilContractTaxStrategyTest` and an end-to-end `TaxCalculatorTest`.
-
-Net income at 1000 PLN: employment 736.90 → 763.24, civil contract 706.90 → 728.24.
-
-<sub>[↑ Back to contents](#contents)</sub>
+> **Note:** At the end of iteration 2, the tax calculation itself was corrected to follow Polish tax rules. That is a bug fix, not a refactoring, so it is described separately in [F.1](#f1). From this point on, the examples show the corrected numbers.
 
 ---
 
 <a id="iteration-3"></a>
 
-## Iteration 3: Input and output that can be swapped
+## Iteration 3
 
 Today the program reads from the keyboard and prints to the console, but it should be possible to switch to a file, a GUI or a web page later without rewriting the core.
 
@@ -1087,22 +1017,18 @@ public TaxReport toReport() {
 
 Program output for a civil contract, before and after. The numbers are the same; only the layout and labels changed:
 
-```text
-Before                                         After
-income 1000.00                                 CIVIL
-Social security tax = 97.60                    Gross income: 1000.00
-Disability social security tax = 15.00         Pension contribution: 97.60
-...                                            Disability contribution: 15.00
-income to be taxed = 690.32 rounded = 690      ...
-Advance tax 18% = 124.20                       Taxable base: 690.32
-Already paid tax = 124.20                      Taxable base (rounded): 690
-Advance tax = 57.33 rounded = 57               Advance tax rate: 18%
-                                               Advance tax: 124.20
-Net income = 728.24                            Tax after allowance: 124.20
-                                               Advance tax payable: 57.33
-                                               Advance tax payable (rounded): 57
-                                               Net income: 728.24
-```
+| Before | After |
+| --- | --- |
+| (no title) | `CIVIL` |
+| `income 1000.00` | `Gross income: 1000.00` |
+| `Social security tax = 97.60` | `Pension contribution: 97.60` |
+| `Disability social security tax = 15.00` | `Disability contribution: 15.00` |
+| ... | ... |
+| `income to be taxed = 690.32 rounded = 690` | `Taxable base: 690.32`<br>`Taxable base (rounded): 690` |
+| `Advance tax 18% = 124.20` | `Advance tax rate: 18%`<br>`Advance tax: 124.20` |
+| `Already paid tax = 124.20` | `Tax after allowance: 124.20` |
+| `Advance tax = 57.33 rounded = 57` | `Advance tax payable: 57.33`<br>`Advance tax payable (rounded): 57` |
+| `Net income = 728.24` | `Net income: 728.24` |
 
 **All changes:**
 
@@ -1219,7 +1145,80 @@ public final class ContractTaxStrategy implements TaxStrategy {
 
 <sub>[↑ Back to contents](#contents)</sub>
 
----
+<a id="correctness-fixes"></a>
+
+## Correctness fixes (outside the refactoring)
+
+Refactoring changes how code is built and keeps its results the same. The changes in this section are different: they deliberately changed the results, because the original program calculated or printed something wrong. Each one was made as a separate change, with the tests updated on purpose to the correct values, so that it is never confused with the refactoring around it.
+
+<a id="f1"></a>
+
+### F.1 Tax calculation follows Polish tax rules
+
+*Made at the end of [iteration 2](#iteration-2).*
+
+The refactoring in iteration 1 deliberately kept the original math. That math did not follow Polish tax rules:
+
+| What | Before (wrong) | After (correct) |
+| --- | --- | --- |
+| Base for the health contribution (9% and 7.75%) | Gross income | Income after social security contributions |
+| Base for civil-contract expenses (20%) | Gross income | Income after social security contributions |
+| Rounding of tax amounts | "Banker's rounding" (`HALF_EVEN`): 0.50 sometimes rounds down | `HALF_UP`: 0.50 always rounds up, as *Ordynacja podatkowa*, art. 63 requires |
+| Taxable base, tax after allowance, tax to pay | Could become negative for low incomes | Never below zero |
+
+**The change in code.** In the shared calculation, before:
+
+```java
+RoundingMode ROUNDING_MODE = RoundingMode.HALF_EVEN;
+BigDecimal healthContributionBase = grossIncome;
+BigDecimal taxableBase = grossIncome.subtract(taxDeductibleExpenses);
+```
+
+After:
+
+```java
+RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+BigDecimal incomeAfterSocialSecurity = grossIncome.subtract(totalSocialSecurity);
+BigDecimal healthContribution = applyRate(incomeAfterSocialSecurity, TaxRates.HEALTH_CONTRIBUTION_RATE);
+BigDecimal taxableBase = nonNegative(incomeAfterSocialSecurity.subtract(taxDeductibleExpenses));
+```
+
+**The effect on the results**, for an income of 1000.00 PLN:
+
+| Value | Employment before | Employment after | Civil before | Civil after |
+| --- | --- | --- | --- | --- |
+| Health contribution base | 1000.00 | 862.90 | 1000.00 | 862.90 |
+| Health contribution (9%) | 90.00 | 77.66 | 90.00 | 77.66 |
+| Tax-deductible expenses | 111.25 | 111.25 | 200.00 | 172.58 |
+| Taxable base (rounded) | 889 | 752 | 800 | 690 |
+| Tax to pay (rounded) | 36 | 22 | 66 | 57 |
+| **Net income** | **736.90** | **763.24** | **706.90** | **728.24** |
+
+For an income of 300.00 PLN on an employment contract, the old code produced a negative tax:
+
+| Before | After |
+| --- | --- |
+| `Reduced tax = -12.31` | `Reduced tax = 0.00` |
+| `Advance tax paid = -35.56 rounded = -36` | `Advance tax paid = 0.00 rounded = 0` |
+
+**Tests:** `EmploymentTaxStrategyTest` and `CivilContractTaxStrategyTest` check the corrected values, including rounding at exactly .50 and incomes too low to be taxed. An end-to-end `TaxCalculatorTest` checks the corrected output of the whole program.
+
+<sub>[↑ Back to contents](#contents)</sub>
+
+<a id="f2"></a>
+
+### F.2 Two wrong lines in the report
+
+*Made together with [2.4](#s2-4).*
+
+| Report line | Before (wrong) | After (correct) |
+| --- | --- | --- |
+| Disability contribution (1.5%) | Labelled `Health social security tax`, a translation mistake | Labelled `Disability social security tax` |
+| Civil contract, "Already paid tax" | Showed the advance tax | Shows the tax after the allowance, as the label says |
+
+The second fix does not change any number printed today, because the civil contract has no allowance, so both values are the same. It would have shown a wrong number as soon as an allowance was added.
+
+<sub>[↑ Back to contents](#contents)</sub>
 
 <a id="the-result"></a>
 
@@ -1230,13 +1229,13 @@ public final class ContractTaxStrategy implements TaxStrategy {
 | Compiles | No (14 errors) | Yes |
 | `main` method | 108 lines doing everything | 8 lines that only assemble the program |
 | Money | `double`, inexact | `BigDecimal`, exact, rounded as the law requires |
-| Tax rules | Partly wrong | Follow Polish rules |
+| Tax rules | Partly wrong | Follow Polish rules (a separate fix, see [F.1](#f1)) |
 | Tax rates | Bare numbers scattered around | Named, in one place |
 | Names | `soc_health1`, `df00`, `taxedIncome0` | `healthContribution`, `roundedTaxableBase` |
 | Duplication | About 90% copy-paste between contracts | Shared steps written once |
 | Adding a contract type | Edit a big `if/else` | Combine existing parts in one new `TaxStrategies` method |
 | Changing input or output | Rewrite `main` | Add one reader or writer class |
-| Build | Manual command, one IDE | `mvn test` |
+| Build | No build tool, compiled by hand | `mvn test` |
 | Tests | One hand-run file, loose checks | 75 JUnit tests in 15 files, exact values and edge cases |
 
 <sub>[↑ Back to contents](#contents)</sub>
