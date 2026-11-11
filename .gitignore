@@ -30,3 +30,6 @@ target/
 .idea/
 *.iml
 out/
+
+# VSCode
+.vscode/
